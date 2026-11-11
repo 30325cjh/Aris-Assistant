@@ -22,6 +22,8 @@ class FloatingAssistantService : Service() {
     private var scale = 1f
     private var lastX = 0
     private var lastY = 0
+    private var startRawX = 0f
+    private var startRawY = 0f
 
     override fun onCreate() {
         super.onCreate()
@@ -84,9 +86,11 @@ class FloatingAssistantService : Service() {
             if (event.action == MotionEvent.ACTION_DOWN) {
                 lastX = params.x
                 lastY = params.y
+                startRawX = event.rawX
+                startRawY = event.rawY
             } else if (event.action == MotionEvent.ACTION_MOVE && event.pointerCount == 1 && !scaleDetector.isInProgress) {
-                params.x = (lastX - event.rawX.toInt() + event.x.toInt()).coerceAtLeast(0)
-                params.y = (lastY + event.rawY.toInt() - event.y.toInt()).coerceAtLeast(0)
+                params.x = (lastX + startRawX - event.rawX).toInt().coerceAtLeast(0)
+                params.y = (lastY + event.rawY - startRawY).toInt().coerceAtLeast(0)
                 try { windowManager?.updateViewLayout(avatar, params) } catch (_: Exception) {}
             }
             true
