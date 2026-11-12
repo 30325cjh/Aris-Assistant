@@ -1,14 +1,29 @@
-# Aris Assistant
+# Aris AI
 
-Android MVP for a floating assistant launcher and user-selected Unity AssetBundle import.
+Personal-use Android floating assistant prototype, built with Kotlin.
 
-## Current scope
-- Import and persist access to a `.unity3d` file using Android's Storage Access Framework.
-- Request Android's display-over-other-apps permission.
-- Run a foreground service that displays a movable floating assistant button.
-- Tap the floating button to reopen the app.
+## Current milestone: floating shell (M1 prototype)
 
-**Important:** `.unity3d` is a Unity AssetBundle, not a universal model format. This first build stores the selected bundle but does not yet load or render its contents. Rendering requires a compatible Unity runtime and compatible bundle version/assets. AI chat and device actions are not included yet.
+- Requests Android's display-over-other-apps permission through the system settings screen.
+- Starts a user-requested foreground service with a persistent notification and an explicit **종료** action.
+- Shows a compact floating Aris launcher.
+- Single-tap expands/collapses a Millennium-themed character placeholder; chat is not shown by default.
+- Double-tap opens/closes the chat test panel.
+- Drag moves the overlay; gesture detection separates taps from scrolling/dragging.
+- Existing Unity AssetBundle selection is retained as an experimental file-import path only.
+
+## Important limitations
+
+The current floating character is a text-based UI placeholder, **not a Live2D or 3D model**. Selecting a .unity3d file only stores its document URI; it does not load or render the bundle. Gemini, production chat, voice, lip-sync, persistent memory, and device-action tools are not implemented yet.
+
+The app must be granted overlay permission by the user. Android may stop the service, and the app must handle permission revocation. The foreground-service notification is intentionally visible and provides a stop action.
 
 ## Build
-GitHub Actions builds a debug APK on pushes to `main`. Download it from the workflow run's **Artifacts** section.
+
+- Android Gradle Plugin: 8.7.3
+- Gradle: 8.9
+- JDK: 17
+- compileSdk / targetSdk: 35
+- minSdk: 26
+
+Run gradle assembleDebug from the repository root, or run the Android APK GitHub Actions workflow. CI builds pushes on all branches and manual workflow dispatches. The debug APK is uploaded as a workflow artifact.
