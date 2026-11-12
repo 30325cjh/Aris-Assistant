@@ -29,8 +29,10 @@ jobs:
           cache: gradle
       - name: Validate Gradle wrapper
         uses: gradle/actions/wrapper-validation@v5
-      - name: Build debug APK
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
+        with:
+          gradle-version: '8.9'
       - name: Assemble
         run: |
           if [ -f ./gradlew ]; then
