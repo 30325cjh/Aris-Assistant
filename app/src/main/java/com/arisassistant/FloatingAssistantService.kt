@@ -127,7 +127,7 @@ class FloatingAssistantService : Service() {
         }
         val input = EditText(this).apply {
             hint = "예: 웃는거, 놀란거, 무표정"
-            singleLine = true
+            setSingleLine(true)
             textSize = 14f
         }
         val buttons = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END }
@@ -139,7 +139,7 @@ class FloatingAssistantService : Service() {
                 if (expression != null) {
                     currentExpression = expression
                     output.text = "현재 표정: $currentExpression"
-                    avatarView?.text = "아리스\n$currentExpression"
+                    avatarView?.setText("아리스\n$currentExpression")
                 } else {
                     output.text = "표정 명령을 찾지 못했어요. 기본표정, 웃는거, 우는거, 놀란거, 당황한거, 질색하는 표정을 입력해 보세요."
                 }
