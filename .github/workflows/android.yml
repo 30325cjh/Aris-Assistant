@@ -2,6 +2,8 @@ name: Android APK
 on:
   push:
     branches: ["**"]
+  pull_request:
+    branches: [ docs/aris-ai-v1-design ]
   workflow_dispatch:
 permissions:
   contents: read
