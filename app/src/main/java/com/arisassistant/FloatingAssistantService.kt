@@ -292,7 +292,7 @@ class FloatingAssistantService : Service() {
             textSize = 17f
             setTextColor(0xFFB8F5FF.toInt())
         }
-        val hint = TextView(this).apply {
+        val subtitle = TextView(this).apply {
             text = "텍스트 대화 UI 프로토타입 · 실제 AI 연결 전"
             textSize = 12f
             setTextColor(0xFFD5E6F5.toInt())
@@ -338,7 +338,7 @@ class FloatingAssistantService : Service() {
         buttons.addView(close)
         buttons.addView(send)
         panel.addView(heading)
-        panel.addView(hint)
+        panel.addView(subtitle)
         panel.addView(output)
         panel.addView(input)
         panel.addView(buttons)
