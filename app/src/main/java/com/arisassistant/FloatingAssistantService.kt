@@ -1,11 +1,13 @@
 package com.arisassistant
 
+import android.app.AppOpsManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
@@ -31,6 +33,13 @@ class FloatingAssistantService : Service() {
     }
 
     private var windowManager: WindowManager? = null
+    private var appOpsManager: AppOpsManager? = null
+    private val positionPrefs by lazy { getSharedPreferences("aris_overlay", MODE_PRIVATE) }
+    private val overlayPermissionListener = AppOpsManager.OnOpChangedListener { op, _ ->
+        if (op == AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW && !Settings.canDrawOverlays(this)) {
+            stopSelf()
+        }
+    }
     private var avatarView: TextView? = null
     private var chatPanel: LinearLayout? = null
     private var avatarParams: WindowManager.LayoutParams? = null
@@ -42,6 +51,7 @@ class FloatingAssistantService : Service() {
     private var downRawX = 0f
     private var downRawY = 0f
     private var dragging = false
+    private var draggedThisGesture = false
 
     override fun onCreate() {
         super.onCreate()
@@ -53,6 +63,7 @@ class FloatingAssistantService : Service() {
             stopSelf()
             return
         }
+        watchOverlayPermission()
         showAvatar()
     }
 
@@ -67,6 +78,16 @@ class FloatingAssistantService : Service() {
         }
         if (avatarView == null) showAvatar()
         return START_NOT_STICKY
+    }
+
+    private fun watchOverlayPermission() {
+        val manager = getSystemService(APP_OPS_SERVICE) as AppOpsManager
+        manager.startWatchingMode(
+            AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW,
+            packageName,
+            overlayPermissionListener
+        )
+        appOpsManager = manager
     }
 
     private fun createNotificationChannel() {
@@ -150,9 +171,10 @@ class FloatingAssistantService : Service() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.END
-            x = dp(18)
-            y = dp(180)
+            x = positionPrefs.getInt("x", dp(18))
+            y = positionPrefs.getInt("y", dp(180))
         }
+        clampAvatarPosition(params)
 
         val touchSlop = ViewConfiguration.get(this).scaledTouchSlop
         val gestures = GestureDetector(
@@ -169,19 +191,13 @@ class FloatingAssistantService : Service() {
 
                 override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
                     if (!hasOverlayPermission()) return true
-                    if (chatPanel == null) toggleExpanded()
+                    performGestureAction(resolveSingleTapAction(expanded, chatPanel != null))
                     return true
                 }
 
                 override fun onDoubleTap(e: MotionEvent): Boolean {
                     if (!hasOverlayPermission()) return true
-                    if (expanded) {
-                        toggleChat()
-                    } else {
-                        // A double-tap on the compact launcher only expands it.
-                        // Chat is reachable only after the character is expanded.
-                        toggleExpanded()
-                    }
+                    performGestureAction(resolveDoubleTapAction(expanded, chatPanel != null))
                     return true
                 }
             }
@@ -198,6 +214,7 @@ class FloatingAssistantService : Service() {
                     downRawX = event.rawX
                     downRawY = event.rawY
                     dragging = false
+                    draggedThisGesture = false
                 }
 
                 MotionEvent.ACTION_MOVE -> {
@@ -205,6 +222,7 @@ class FloatingAssistantService : Service() {
                     val deltaY = event.rawY - downRawY
                     if (!dragging && (abs(deltaX) > touchSlop || abs(deltaY) > touchSlop)) {
                         dragging = true
+                        draggedThisGesture = true
                     }
                     if (dragging) {
                         val maxX = (resources.displayMetrics.widthPixels - view.width).coerceAtLeast(0)
@@ -221,7 +239,11 @@ class FloatingAssistantService : Service() {
                 }
 
                 MotionEvent.ACTION_UP,
-                MotionEvent.ACTION_CANCEL -> dragging = false
+                MotionEvent.ACTION_CANCEL -> {
+                    if (draggedThisGesture) persistAvatarPosition(params)
+                    dragging = false
+                    draggedThisGesture = false
+                }
             }
             true
         }
@@ -235,6 +257,36 @@ class FloatingAssistantService : Service() {
             avatarParams = null
             stopSelf()
         }
+    }
+
+    private fun performGestureAction(action: OverlayGestureAction) {
+        when (action) {
+            OverlayGestureAction.NONE -> Unit
+            OverlayGestureAction.EXPAND -> expandCharacter()
+            OverlayGestureAction.OPEN_CHAT,
+            OverlayGestureAction.CLOSE_CHAT -> toggleChat()
+        }
+    }
+
+    private fun clampAvatarPosition(params: WindowManager.LayoutParams) {
+        val metrics = resources.displayMetrics
+        val position = clampOverlayPosition(
+            x = params.x,
+            y = params.y,
+            screenWidth = metrics.widthPixels,
+            screenHeight = metrics.heightPixels,
+            windowWidth = params.width,
+            windowHeight = params.height
+        )
+        params.x = position.x
+        params.y = position.y
+    }
+
+    private fun persistAvatarPosition(params: WindowManager.LayoutParams) {
+        positionPrefs.edit()
+            .putInt("x", params.x)
+            .putInt("y", params.y)
+            .apply()
     }
 
     private fun updateAvatarPresentation() {
@@ -253,18 +305,20 @@ class FloatingAssistantService : Service() {
         avatar.contentDescription = "Aris AI 캐릭터 자리표시자. 두 번 터치하면 채팅"
     }
 
-    private fun toggleExpanded() {
-        if (!hasOverlayPermission() || chatPanel != null) return
+    private fun expandCharacter() {
+        if (!hasOverlayPermission() || chatPanel != null || expanded) return
         val avatar = avatarView ?: return
         val params = avatarParams ?: return
 
-        expanded = !expanded
-        params.width = if (expanded) dp(196) else dp(76)
-        params.height = if (expanded) dp(250) else dp(60)
+        expanded = true
+        params.width = dp(196)
+        params.height = dp(250)
+        clampAvatarPosition(params)
         updateAvatarPresentation()
 
         try {
             windowManager?.updateViewLayout(avatar, params)
+            persistAvatarPosition(params)
         } catch (_: Exception) {
             stopSelf()
         }
@@ -277,7 +331,7 @@ class FloatingAssistantService : Service() {
             return
         }
         if (!expanded) {
-            toggleExpanded()
+            expandCharacter()
             return
         }
 
@@ -399,7 +453,22 @@ class FloatingAssistantService : Service() {
         chatPanel = null
     }
 
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        val avatar = avatarView ?: return
+        val params = avatarParams ?: return
+        clampAvatarPosition(params)
+        try {
+            windowManager?.updateViewLayout(avatar, params)
+            persistAvatarPosition(params)
+        } catch (_: Exception) {
+            stopSelf()
+        }
+    }
+
     override fun onDestroy() {
+        appOpsManager?.stopWatchingMode()
+        appOpsManager = null
         closeChat()
         avatarView?.let { view ->
             try {
