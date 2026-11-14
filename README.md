@@ -43,11 +43,15 @@ Toolchain pinned by the project/CI:
 - compileSdk / targetSdk: 35
 - minSdk: 26
 
-The repository does not currently include the Gradle Wrapper. CI therefore installs the exact Gradle 8.9 distribution with gradle/actions/setup-gradle@v5 and runs:
+The repository does not currently include the Gradle Wrapper. CI installs the exact Gradle 8.9 distribution with gradle/actions/setup-gradle@v5 and runs the local overlay-policy unit tests before packaging:
 
-    gradle --no-daemon assembleDebug
+    gradle --no-daemon testDebugUnitTest assembleDebug
 
 For a local build, install Gradle 8.9 and Android SDK platform/build tools for API 35, then run the same command. The CI workflow uploads Aris-Assistant-debug-apk when the build succeeds.
+
+## Automated tests
+
+JVM unit tests cover the overlay tap/double-tap policy and display-bound position clamping. They run in the Android Actions workflow before the debug APK is assembled. These tests do not replace emulator or physical-device interaction tests.
 
 ## Device validation still required
 
