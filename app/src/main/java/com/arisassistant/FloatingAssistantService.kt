@@ -11,6 +11,7 @@ import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.Icon
 import android.os.IBinder
 import android.provider.Settings
 import android.view.GestureDetector
@@ -126,9 +127,11 @@ class FloatingAssistantService : Service() {
             .setContentIntent(openPendingIntent)
             .setOngoing(true)
             .addAction(
-                android.R.drawable.ic_menu_close_clear_cancel,
-                "종료",
-                stopPendingIntent
+                Notification.Action.Builder(
+                    Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel),
+                    "종료",
+                    stopPendingIntent
+                ).build()
             )
             .build()
     }
