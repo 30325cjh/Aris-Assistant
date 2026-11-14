@@ -225,11 +225,18 @@ class FloatingAssistantService : Service() {
                         draggedThisGesture = true
                     }
                     if (dragging) {
-                        val maxX = (resources.displayMetrics.widthPixels - view.width).coerceAtLeast(0)
-                        val maxY = (resources.displayMetrics.heightPixels - view.height).coerceAtLeast(0)
                         // With TOP|END gravity, x is the distance from the right edge.
-                        params.x = (downWindowX - deltaX.toInt()).coerceIn(0, maxX)
-                        params.y = (downWindowY + deltaY.toInt()).coerceIn(0, maxY)
+                        val metrics = resources.displayMetrics
+                        val position = clampOverlayPosition(
+                            x = downWindowX - deltaX.toInt(),
+                            y = downWindowY + deltaY.toInt(),
+                            screenWidth = metrics.widthPixels,
+                            screenHeight = metrics.heightPixels,
+                            windowWidth = params.width,
+                            windowHeight = params.height
+                        )
+                        params.x = position.x
+                        params.y = position.y
                         try {
                             windowManager?.updateViewLayout(view, params)
                         } catch (_: Exception) {
@@ -467,7 +474,7 @@ class FloatingAssistantService : Service() {
     }
 
     override fun onDestroy() {
-        appOpsManager?.stopWatchingMode()
+        appOpsManager?.stopWatchingMode(overlayPermissionListener)
         appOpsManager = null
         closeChat()
         avatarView?.let { view ->
