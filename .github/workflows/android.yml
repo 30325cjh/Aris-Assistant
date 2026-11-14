@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: android-apk-\${{ github.ref }}
+  group: android-apk-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -39,8 +39,8 @@ jobs:
           java -version
           gradle --version
 
-      - name: Build debug APK
-        run: gradle --no-daemon assembleDebug
+      - name: Run unit tests and build debug APK
+        run: gradle --no-daemon testDebugUnitTest assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
