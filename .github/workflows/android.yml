@@ -3,7 +3,7 @@ on:
   push:
     branches: [ "main", "feature/**" ]
   pull_request:
-    branches: [ "docs/aris-ai-v1-design", "main" ]
+    branches: [ "docs/aris-ai-v1-design", "main", "feature/**" ]
   workflow_dispatch:
 
 permissions:
