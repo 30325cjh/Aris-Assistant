@@ -1,9 +1,8 @@
 package com.arisassistant
 
-import com.arisassistant.character.CharacterDisplayMode
-import com.arisassistant.character.CharacterPresentationState
 import com.arisassistant.character.CharacterRenderer
 import com.arisassistant.character.PlaceholderCharacterRenderer
+import com.arisassistant.character.characterPresentationFor
 
 import android.app.AppOpsManager
 import android.app.Notification
@@ -49,6 +48,7 @@ class FloatingAssistantService : Service() {
     }
     private var avatarView: View? = null
     private var characterRenderer: CharacterRenderer? = null
+    private var characterRendererAttached = false
     private var chatPanel: LinearLayout? = null
     private var avatarParams: WindowManager.LayoutParams? = null
     private var expanded = false
@@ -264,10 +264,24 @@ class FloatingAssistantService : Service() {
         try {
             val manager = windowManager ?: throw IllegalStateException("WindowManager is unavailable")
             manager.addView(avatar, params)
+            characterRendererAttached = true
             renderer.onHostAttached()
         } catch (_: Exception) {
-            renderer.onHostDetached()
-            renderer.dispose()
+            if (characterRendererAttached) {
+                try {
+                    renderer.onHostDetached()
+                } catch (_: Exception) {
+                }
+                try {
+                    windowManager?.removeView(avatar)
+                } catch (_: Exception) {
+                }
+            }
+            characterRendererAttached = false
+            try {
+                renderer.dispose()
+            } catch (_: Exception) {
+            }
             avatarView = null
             avatarParams = null
             characterRenderer = null
@@ -305,10 +319,8 @@ class FloatingAssistantService : Service() {
             .apply()
     }
 
-    private fun currentCharacterPresentation() = CharacterPresentationState(
-        mode = if (expanded) CharacterDisplayMode.EXPANDED else CharacterDisplayMode.LAUNCHER,
-        expressionLabel = currentExpression
-    )
+    private fun currentCharacterPresentation() =
+        characterPresentationFor(expanded = expanded, expressionLabel = currentExpression)
 
     private fun updateAvatarPresentation() {
         characterRenderer?.render(currentCharacterPresentation())
@@ -480,14 +492,23 @@ class FloatingAssistantService : Service() {
         appOpsManager = null
         closeChat()
         val renderer = characterRenderer
-        renderer?.onHostDetached()
+        if (characterRendererAttached) {
+            try {
+                renderer?.onHostDetached()
+            } catch (_: Exception) {
+            }
+            characterRendererAttached = false
+        }
         avatarView?.let { view ->
             try {
                 windowManager?.removeView(view)
             } catch (_: Exception) {
             }
         }
-        renderer?.dispose()
+        try {
+            renderer?.dispose()
+        } catch (_: Exception) {
+        }
         characterRenderer = null
         avatarView = null
         avatarParams = null
