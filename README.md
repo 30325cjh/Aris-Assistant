@@ -7,18 +7,18 @@ Personal-use Android floating assistant prototype, implemented with Kotlin.
 - First launch explains the display-over-other-apps permission before opening Android settings.
 - The user explicitly starts and stops the floating foreground service.
 - The compact launcher is draggable.
-- One tap expands or collapses the character placeholder.
+- One tap on the compact launcher expands the character placeholder; a single tap on the expanded character does not collapse it.
 - A double-tap on the expanded placeholder opens or closes the chat panel. A double-tap on the compact launcher only expands it.
 - Chat stays hidden until the expanded character is double-tapped.
 - The persistent foreground-service notification includes a stop action and opens app settings when tapped.
 - Overlay permission is checked again when the app resumes and before overlay interactions.
 
-## Current milestone: M1 floating-shell prototype
+## Current milestones: M1 floating shell and M2 renderer seam
 
-The floating view and chat panel are interaction/layout prototypes. The avatar is **not** a Live2D or 3D model. The chat panel only recognizes a small set of local expression-test words; it is not an AI chat implementation.
+The floating view and chat panel are interaction/layout prototypes. `CharacterRenderer` now separates the floating host from the character view, with explicit attach/detach/dispose lifecycle hooks. `PlaceholderCharacterRenderer` is the current fallback; the avatar is **not** a Live2D or 3D model. The chat panel only recognizes a small set of local expression-test words; it is not an AI chat implementation.
 
 The following approved features are still future milestones:
-- Live2D renderer and rigged upper-body model (requires verified SDK/runtime compatibility, appropriate rights, and layered model assets).
+- A real Live2D `CharacterRenderer` implementation and rigged upper-body model (requires verified SDK/runtime compatibility, appropriate rights, and layered model assets).
 - Gemini provider, streaming chat, cancellation, local conversation storage, and user-managed memory.
 - Optional speech input/output, speaking-state UI, and audio-synchronized lip movement.
 - Validated emotion directives and allowlisted Android app/search/settings actions with confirmation for consequential actions.
