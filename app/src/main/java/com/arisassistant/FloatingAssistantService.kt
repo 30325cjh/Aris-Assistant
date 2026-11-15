@@ -1,5 +1,10 @@
 package com.arisassistant
 
+import com.arisassistant.character.CharacterDisplayMode
+import com.arisassistant.character.CharacterPresentationState
+import com.arisassistant.character.CharacterRenderer
+import com.arisassistant.character.PlaceholderCharacterRenderer
+
 import android.app.AppOpsManager
 import android.app.Notification
 import android.app.NotificationChannel
@@ -17,6 +22,7 @@ import android.provider.Settings
 import android.view.GestureDetector
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
@@ -41,7 +47,8 @@ class FloatingAssistantService : Service() {
             stopSelf()
         }
     }
-    private var avatarView: TextView? = null
+    private var avatarView: View? = null
+    private var characterRenderer: CharacterRenderer? = null
     private var chatPanel: LinearLayout? = null
     private var avatarParams: WindowManager.LayoutParams? = null
     private var expanded = false
@@ -156,16 +163,9 @@ class FloatingAssistantService : Service() {
     private fun showAvatar() {
         if (!hasOverlayPermission() || avatarView != null) return
 
-        val avatar = TextView(this).apply {
-            text = "ARIS"
-            textSize = 17f
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            background = roundedBackground(0xEE102B50.toInt())
-            contentDescription = "Aris AI 실행 아이콘. 한 번 터치하면 캐릭터 표시, 펼쳐진 캐릭터를 두 번 터치하면 채팅"
-            elevation = dp(10).toFloat()
-        }
+        val renderer = PlaceholderCharacterRenderer(this)
+        renderer.render(currentCharacterPresentation())
+        val avatar = renderer.view
         val params = WindowManager.LayoutParams(
             dp(76),
             dp(60),
@@ -260,11 +260,17 @@ class FloatingAssistantService : Service() {
 
         avatarView = avatar
         avatarParams = params
+        characterRenderer = renderer
         try {
-            windowManager?.addView(avatar, params)
+            val manager = windowManager ?: throw IllegalStateException("WindowManager is unavailable")
+            manager.addView(avatar, params)
+            renderer.onHostAttached()
         } catch (_: Exception) {
+            renderer.onHostDetached()
+            renderer.dispose()
             avatarView = null
             avatarParams = null
+            characterRenderer = null
             stopSelf()
         }
     }
@@ -299,20 +305,13 @@ class FloatingAssistantService : Service() {
             .apply()
     }
 
-    private fun updateAvatarPresentation() {
-        val avatar = avatarView ?: return
-        if (!expanded) {
-            avatar.text = "ARIS"
-            avatar.textSize = 17f
-            avatar.background = roundedBackground(0xEE102B50.toInt())
-            avatar.contentDescription = "Aris AI 실행 아이콘. 한 번 터치하면 캐릭터 표시"
-            return
-        }
+    private fun currentCharacterPresentation() = CharacterPresentationState(
+        mode = if (expanded) CharacterDisplayMode.EXPANDED else CharacterDisplayMode.LAUNCHER,
+        expressionLabel = currentExpression
+    )
 
-        avatar.text = "ARIS\nMILLENNIUM\n\n캐릭터 미리보기\n테스트 표정: $currentExpression\n\n두 번 터치해서 채팅"
-        avatar.textSize = 15f
-        avatar.background = roundedBackground(0xF0102B50.toInt())
-        avatar.contentDescription = "Aris AI 캐릭터 자리표시자. 두 번 터치하면 채팅"
+    private fun updateAvatarPresentation() {
+        characterRenderer?.render(currentCharacterPresentation())
     }
 
     private fun expandCharacter() {
@@ -480,12 +479,16 @@ class FloatingAssistantService : Service() {
         appOpsManager?.stopWatchingMode(overlayPermissionListener)
         appOpsManager = null
         closeChat()
+        val renderer = characterRenderer
+        renderer?.onHostDetached()
         avatarView?.let { view ->
             try {
                 windowManager?.removeView(view)
             } catch (_: Exception) {
             }
         }
+        renderer?.dispose()
+        characterRenderer = null
         avatarView = null
         avatarParams = null
         windowManager = null
