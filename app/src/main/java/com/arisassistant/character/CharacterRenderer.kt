@@ -17,6 +17,14 @@ internal data class CharacterPresentationState(
     val expressionLabel: String
 )
 
+internal fun characterPresentationFor(
+    expanded: Boolean,
+    expressionLabel: String
+) = CharacterPresentationState(
+    mode = if (expanded) CharacterDisplayMode.EXPANDED else CharacterDisplayMode.LAUNCHER,
+    expressionLabel = expressionLabel
+)
+
 /**
  * Contract between the floating host and a replaceable character renderer.
  *
