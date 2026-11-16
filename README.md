@@ -25,6 +25,17 @@ The following approved features are still future milestones:
 
 The existing Unity AssetBundle picker is retained only as an experimental import path. Choosing a .unity3d file stores its document URI; it does not load or render the bundle.
 
+
+## AI provider contract (M3 groundwork)
+
+`app/src/main/java/com/arisassistant/ai/AssistantProvider.kt` defines a provider-neutral request/response boundary and typed conversation turns. Provider-supplied emotion, expression, motion, and intensity values are treated as untrusted input and validated against closed allowlists before they can reach a character renderer. Unknown values fall back to neutral/no-motion, and intensity is clamped to the range 0–1.
+
+This is architecture groundwork only: no Gemini network client, API-key storage, chat UI wiring, streaming, conversation persistence, or device-action executor is implemented. Device actions are intentionally excluded from the provider response contract and must later use a separate allowlisted executor.
+
+## Live2D runtime evaluation
+
+See [docs/M2_LIVE2D_RUNTIME_EVALUATION.md](docs/M2_LIVE2D_RUNTIME_EVALUATION.md) for the official Android/OpenGL support findings, sample toolchain gap, license considerations, and model-authoring blocker. The current placeholder remains active; no Live2D SDK or model is bundled.
+
 ## Android permissions and privacy
 
 - SYSTEM_ALERT_WINDOW is granted by the user in Android settings. It is never silently granted.
