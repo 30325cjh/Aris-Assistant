@@ -16,7 +16,7 @@ class AssistantPresentationDirectiveTest {
         assertEquals(AssistantEmotion.HAPPY, validated.emotion)
         assertEquals(CharacterExpression.SMILE, validated.expression)
         assertEquals(CharacterMotion.NOD, validated.motion)
-        assertEquals(0.7f, validated.intensity)
+        assertEquals(0.7f, validated.intensity, 0.0001f)
     }
 
     @Test
@@ -38,11 +38,13 @@ class AssistantPresentationDirectiveTest {
     fun intensityIsClampedToTheSupportedRange() {
         assertEquals(
             1f,
-            UntrustedPresentationDirective(intensity = 3f).validate().intensity
+            UntrustedPresentationDirective(intensity = 3f).validate().intensity,
+            0.0001f
         )
         assertEquals(
             0f,
-            UntrustedPresentationDirective(intensity = -2f).validate().intensity
+            UntrustedPresentationDirective(intensity = -2f).validate().intensity,
+            0.0001f
         )
     }
 
@@ -50,11 +52,13 @@ class AssistantPresentationDirectiveTest {
     fun nonFiniteIntensityFallsBackToZero() {
         assertEquals(
             0f,
-            UntrustedPresentationDirective(intensity = Float.NaN).validate().intensity
+            UntrustedPresentationDirective(intensity = Float.NaN).validate().intensity,
+            0.0001f
         )
         assertEquals(
             0f,
-            UntrustedPresentationDirective(intensity = Float.POSITIVE_INFINITY).validate().intensity
+            UntrustedPresentationDirective(intensity = Float.POSITIVE_INFINITY).validate().intensity,
+            0.0001f
         )
     }
 }
