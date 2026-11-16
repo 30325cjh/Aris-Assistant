@@ -87,12 +87,12 @@ internal data class ValidatedPresentationDirective(
  */
 internal fun UntrustedPresentationDirective.validate(): ValidatedPresentationDirective =
     ValidatedPresentationDirective(
-        emotion = emotion.toAllowedValue(AssistantEmotion.entries, AssistantEmotion.NEUTRAL),
+        emotion = emotion.toAllowedValue(AssistantEmotion.entries, AssistantEmotion.NEUTRAL) { it.wireValue },
         expression = expression.toAllowedValue(
             CharacterExpression.entries,
             CharacterExpression.NEUTRAL
-        ),
-        motion = motion.toAllowedValue(CharacterMotion.entries, CharacterMotion.NONE),
+        ) { it.wireValue },
+        motion = motion.toAllowedValue(CharacterMotion.entries, CharacterMotion.NONE) { it.wireValue },
         intensity = intensity
             ?.takeIf { it.isFinite() }
             ?.coerceIn(0f, 1f)
@@ -100,16 +100,10 @@ internal fun UntrustedPresentationDirective.validate(): ValidatedPresentationDir
     )
 
 private fun <T> String?.toAllowedValue(
-    allowed: Array<T>,
-    fallback: T
-): T where T : Enum<T> {
+    allowed: Iterable<T>,
+    fallback: T,
+    wireValue: (T) -> String
+): T {
     val normalized = this?.trim()?.lowercase() ?: return fallback
-    return allowed.firstOrNull { value ->
-        when (value) {
-            is AssistantEmotion -> value.wireValue == normalized
-            is CharacterExpression -> value.wireValue == normalized
-            is CharacterMotion -> value.wireValue == normalized
-            else -> false
-        }
-    } ?: fallback
+    return allowed.firstOrNull { wireValue(it) == normalized } ?: fallback
 }
