@@ -31,7 +31,7 @@ class AssistantPresentationDirectiveTest {
         assertEquals(AssistantEmotion.NEUTRAL, validated.emotion)
         assertEquals(CharacterExpression.NEUTRAL, validated.expression)
         assertEquals(CharacterMotion.NONE, validated.motion)
-        assertEquals(0.8f, validated.intensity)
+        assertEquals(0.8f, validated.intensity, 0.0001f)
     }
 
     @Test
