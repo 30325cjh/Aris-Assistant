@@ -1,5 +1,18 @@
 package com.arisassistant
 
+import com.arisassistant.ai.AssistantRequest
+import com.arisassistant.ai.ConversationRole
+import com.arisassistant.ai.ConversationTurn
+import com.arisassistant.ai.GeminiApiKeyStore
+import com.arisassistant.ai.GeminiProvider
+import com.arisassistant.ai.GeminiProviderException
+import com.arisassistant.ai.normalizedForGemini
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+
 import com.arisassistant.character.CharacterRenderer
 import com.arisassistant.character.PlaceholderCharacterRenderer
 import com.arisassistant.character.characterPresentationFor
@@ -53,6 +66,8 @@ class FloatingAssistantService : Service() {
     private var avatarParams: WindowManager.LayoutParams? = null
     private var expanded = false
     private var currentExpression = "기본표정"
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val chatHistory = mutableListOf<ConversationTurn>()
 
     private var downWindowX = 0
     private var downWindowY = 0
