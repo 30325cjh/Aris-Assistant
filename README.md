@@ -15,22 +15,26 @@ Personal-use Android floating assistant prototype, implemented with Kotlin.
 
 ## Current milestones: M1 floating shell and M2 renderer seam
 
-The floating view and chat panel are interaction/layout prototypes. `CharacterRenderer` now separates the floating host from the character view, with explicit attach/detach/dispose lifecycle hooks. `PlaceholderCharacterRenderer` is the current fallback; the avatar is **not** a Live2D or 3D model. The chat panel only recognizes a small set of local expression-test words; it is not an AI chat implementation.
+The floating view and character remain UI prototypes. `CharacterRenderer` separates the floating host from the character view, and `PlaceholderCharacterRenderer` remains the active fallback; the avatar is **not** a Live2D or 3D model.
 
-The following approved features are still future milestones:
+The expanded chat now sends text to the Gemini REST API after the user supplies a key in the app's Gemini settings screen. Local expression-test words still update the placeholder label without making a network request. Conversation context is held only in the running floating service and can be cleared from the chat panel; it is not persisted across service restarts.
+
+Remaining approved features:
 - A real Live2D `CharacterRenderer` implementation and rigged upper-body model (requires verified SDK/runtime compatibility, appropriate rights, and layered model assets).
-- Gemini provider, streaming chat, cancellation, local conversation storage, and user-managed memory.
+- Streaming responses, durable conversation storage, and user-managed long-term memory.
 - Optional speech input/output, speaking-state UI, and audio-synchronized lip movement.
-- Validated emotion directives and allowlisted Android app/search/settings actions with confirmation for consequential actions.
+- Validated emotion directives connected to the renderer and allowlisted Android app/search/settings actions with confirmation for consequential actions.
 
 The existing Unity AssetBundle picker is retained only as an experimental import path. Choosing a .unity3d file stores its document URI; it does not load or render the bundle.
 
 
 ## AI provider contract (M3 groundwork)
 
-`app/src/main/java/com/arisassistant/ai/AssistantProvider.kt` defines a provider-neutral request/response boundary and typed conversation turns. Provider-supplied emotion, expression, motion, and intensity values are treated as untrusted input and validated against closed allowlists before they can reach a character renderer. Unknown values fall back to neutral/no-motion, and intensity is clamped to the range 0–1.
+`AssistantProvider` remains the provider-neutral boundary. `GeminiProvider` now implements a non-streaming text request to Google's `generateContent` REST endpoint, using the documented `x-goog-api-key` header and the `gemini-3.8-flash` model. Requests are made on an IO dispatcher, use bounded input/history and response sizes, and map HTTP failures to user-safe messages. The prompt explicitly tells the model it cannot execute Android actions.
 
-This is architecture groundwork only: no Gemini network client, API-key storage, chat UI wiring, streaming, conversation persistence, or device-action executor is implemented. Device actions are intentionally excluded from the provider response contract and must later use a separate allowlisted executor.
+`GeminiApiKeyStore` encrypts the user-supplied key with an AES-GCM key held by Android Keystore. Only the IV and ciphertext are stored in private app preferences; the key is never bundled in source, BuildConfig, or the repository. The app has a settings screen to save or delete it. A mobile app cannot make a user-owned API key completely secret from a rooted or instrumented device, so the settings screen warns users to restrict the key at Google.
+
+This is the first connected text-chat slice, not the complete assistant: responses are not streamed, chat context exists only in memory for the lifetime of the floating service, and no long-term memory or Android action executor is present. Device actions remain outside the provider response contract and must later use a separate allowlisted executor.
 
 ## Live2D runtime evaluation
 
@@ -41,8 +45,10 @@ See [docs/M2_LIVE2D_RUNTIME_EVALUATION.md](docs/M2_LIVE2D_RUNTIME_EVALUATION.md)
 - SYSTEM_ALERT_WINDOW is granted by the user in Android settings. It is never silently granted.
 - On Android 13+, the app explains and requests notification permission before starting the service. If denied, the user must explicitly confirm continuing; Android may show the service only in its system task manager rather than the notification drawer.
 - The foreground-service notification is intentionally visible and includes an explicit stop action.
+- The app requests INTERNET only for the user-initiated Gemini text request; cleartext traffic remains disabled.
+- The Gemini API key is entered by the user and encrypted at rest with Android Keystore AES-GCM. It is not bundled in the APK or repository. Rooted/instrumented devices can still expose a key while it is in use; restrict it with the provider's key controls.
 - The app does not request microphone permission or collect audio in this milestone.
-- No API key, model file, or private conversation is bundled in this prototype.
+- Conversation context is transient in service memory and has a chat-panel clear control; it is not yet durable or synced.
 
 ## Build
 
@@ -54,15 +60,15 @@ Toolchain pinned by the project/CI:
 - compileSdk / targetSdk: 35
 - minSdk: 26
 
-The repository does not currently include the Gradle Wrapper. CI installs the exact Gradle 8.9 distribution with gradle/actions/setup-gradle@v5 and runs the local overlay-policy unit tests before packaging:
+The repository does not currently include the Gradle Wrapper. CI installs the exact Gradle 8.9 distribution with gradle/actions/setup-gradle@v5 and runs:
 
     gradle --no-daemon testDebugUnitTest assembleDebug
 
-For a local build, install Gradle 8.9 and Android SDK platform/build tools for API 35, then run the same command. The CI workflow uploads Aris-Assistant-debug-apk when the build succeeds.
+For a local build, install Gradle 8.9, JDK 17, and Android SDK platform/build tools for API 35, then run the same command. The app uses kotlinx-coroutines-android 1.9.0 for lifecycle-scoped asynchronous network work. The CI workflow uploads Aris-Assistant-debug-apk when the build succeeds.
 
 ## Automated tests
 
-JVM unit tests cover the overlay tap/double-tap policy and display-bound position clamping. They run in the Android Actions workflow before the debug APK is assembled. These tests do not replace emulator or physical-device interaction tests.
+JVM unit tests cover the overlay tap/double-tap policy, display-bound position clamping, character presentation mapping, provider directive allowlists, and Gemini request-size/history bounds. They run in the Android Actions workflow before the debug APK is assembled. Android Keystore encryption, live Gemini requests, and overlay interactions still require device-level validation.
 
 ## Device validation still required
 
