@@ -383,19 +383,24 @@ class FloatingAssistantService : Service() {
             setTextColor(0xFFB8F5FF.toInt())
         }
         val subtitle = TextView(this).apply {
-            text = "텍스트 대화 UI 프로토타입 · 실제 AI 연결 전"
+            text = "Gemini 텍스트 채팅 · 표정 테스트 명령도 지원"
             textSize = 12f
             setTextColor(0xFFD5E6F5.toInt())
             setPadding(0, dp(8), 0, dp(10))
         }
         val output = TextView(this).apply {
-            text = "표정 테스트 입력 대기 · 현재 값: $currentExpression"
+            text = chatHistory.lastOrNull()?.text
+                ?: if (GeminiApiKeyStore(this@FloatingAssistantService).hasSavedKey()) {
+                    "메시지를 입력하면 Gemini가 답변해요."
+                } else {
+                    "먼저 앱에서 Gemini API 키를 설정해 주세요."
+                }
             textSize = 14f
             setTextColor(Color.WHITE)
             setPadding(0, dp(4), 0, dp(10))
         }
         val input = EditText(this).apply {
-            hint = "테스트: 웃음, 슬픔, 놀람, 당황"
+            hint = "메시지 입력 · 웃음/슬픔 등 표정 테스트"
             setSingleLine(true)
             textSize = 14f
             setTextColor(Color.WHITE)
@@ -411,20 +416,34 @@ class FloatingAssistantService : Service() {
             setOnClickListener { closeChat() }
         }
         val send = Button(this).apply {
-            text = "테스트"
+            text = "보내기"
+        }
+        send.setOnClickListener {
+            val message = input.text.toString().trim()
+            if (message.isEmpty()) {
+                output.text = "메시지를 입력해 주세요."
+                return@setOnClickListener
+            }
+
+            val expression = matchExpression(message)
+            if (expression != null) {
+                currentExpression = expression
+                output.text = "로컬 표정 테스트: $currentExpression"
+                updateAvatarPresentation()
+            } else {
+                sendGeminiMessage(message, output, send)
+            }
+            input.text.clear()
+        }
+        val clearHistory = Button(this).apply {
+            text = "대화 지우기"
             setOnClickListener {
-                val expression = matchExpression(input.text.toString())
-                if (expression != null) {
-                    currentExpression = expression
-                    output.text = "표정 테스트 명령 감지: $currentExpression"
-                    updateAvatarPresentation()
-                } else {
-                    output.text = "명령을 인식하지 못했어요. 웃음, 슬픔, 놀람, 당황, 질색, 무표정을 입력해 보세요."
-                }
-                input.text.clear()
+                chatHistory.clear()
+                output.text = "현재 플로팅 세션의 대화를 지웠어요."
             }
         }
 
+        buttons.addView(clearHistory)
         buttons.addView(close)
         buttons.addView(send)
         panel.addView(heading)
@@ -447,15 +466,72 @@ class FloatingAssistantService : Service() {
         try {
             windowManager?.addView(panel, params)
             chatPanel = panel
-            input.requestFocus()
-            (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager)
-                .showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
+            // Wait until WindowManager attaches the overlay before requesting the IME.
+            panel.post {
+                if (chatPanel === panel) {
+                    input.requestFocus()
+                    (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager)
+                        .showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
+                }
+            }
         } catch (_: Exception) {
             try {
                 windowManager?.removeView(panel)
             } catch (_: Exception) {
             }
             chatPanel = null
+        }
+    }
+
+    private fun sendGeminiMessage(message: String, output: TextView, sendButton: Button) {
+        val keyStore = GeminiApiKeyStore(this)
+        if (!keyStore.hasSavedKey()) {
+            output.text = "Gemini API 키가 없어요. 앱 홈 화면의 Gemini API 키 설정에서 먼저 등록해 주세요."
+            return
+        }
+
+        val request = try {
+            AssistantRequest(
+                userMessage = message,
+                recentHistory = chatHistory.toList()
+            ).normalizedForGemini()
+        } catch (_: IllegalArgumentException) {
+            output.text = "메시지가 비어 있어요. 다시 입력해 주세요."
+            return
+        }
+
+        val userTurn = ConversationTurn(ConversationRole.USER, request.userMessage)
+        chatHistory.add(userTurn)
+        sendButton.isEnabled = false
+        output.text = "나: ${request.userMessage}\n\n아리스가 답변을 준비하고 있어요..."
+
+        serviceScope.launch {
+            try {
+                val response = GeminiProvider(keyStore).generateReply(request)
+                chatHistory.add(ConversationTurn(ConversationRole.ASSISTANT, response.message))
+                trimChatHistory()
+                output.text = "나: ${request.userMessage}\n\n아리스: ${response.message}"
+            } catch (error: GeminiProviderException) {
+                removeFailedUserTurn(userTurn)
+                output.text = error.userMessage
+            } catch (_: Exception) {
+                removeFailedUserTurn(userTurn)
+                output.text = "답변을 가져오지 못했어요. 네트워크와 API 키를 확인한 뒤 다시 시도해 주세요."
+            } finally {
+                sendButton.isEnabled = true
+            }
+        }
+    }
+
+    private fun removeFailedUserTurn(turn: ConversationTurn) {
+        if (chatHistory.lastOrNull() == turn) {
+            chatHistory.removeAt(chatHistory.lastIndex)
+        }
+    }
+
+    private fun trimChatHistory() {
+        while (chatHistory.size > 20) {
+            chatHistory.removeAt(0)
         }
     }
 
@@ -503,6 +579,7 @@ class FloatingAssistantService : Service() {
     }
 
     override fun onDestroy() {
+        serviceScope.cancel()
         appOpsManager?.stopWatchingMode(overlayPermissionListener)
         appOpsManager = null
         closeChat()
