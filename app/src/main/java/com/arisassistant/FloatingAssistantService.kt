@@ -7,6 +7,7 @@ import com.arisassistant.ai.GeminiApiKeyStore
 import com.arisassistant.ai.GeminiProvider
 import com.arisassistant.ai.GeminiProviderException
 import com.arisassistant.ai.normalizedForGemini
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -511,6 +512,9 @@ class FloatingAssistantService : Service() {
                 chatHistory.add(ConversationTurn(ConversationRole.ASSISTANT, response.message))
                 trimChatHistory()
                 output.text = "나: ${request.userMessage}\n\n아리스: ${response.message}"
+            } catch (cancelled: CancellationException) {
+                removeFailedUserTurn(userTurn)
+                throw cancelled
             } catch (error: GeminiProviderException) {
                 removeFailedUserTurn(userTurn)
                 output.text = error.userMessage
