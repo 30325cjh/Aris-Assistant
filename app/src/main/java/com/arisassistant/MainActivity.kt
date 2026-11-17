@@ -1,5 +1,7 @@
 package com.arisassistant
 
+import com.arisassistant.ai.GeminiApiKeyStore
+
 import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
@@ -96,9 +98,12 @@ class MainActivity : Activity() {
             status.text = "플로팅 종료를 요청했어요."
             refreshStatus()
         }
+        val geminiSettings = actionButton("Gemini API 키 설정") {
+            startActivity(Intent(this, GeminiSettingsActivity::class.java))
+        }
         val import = actionButton("기존 Unity 파일 선택 (실험용)") { chooseBundle() }
         val note = TextView(this).apply {
-            text = "현재 떠 있는 캐릭터는 동작 확인용 UI 자리표시자입니다. Live2D 모델, Gemini 채팅, 음성 및 기억 기능은 아직 연결되지 않았어요."
+            text = "캐릭터는 아직 UI 자리표시자입니다. Gemini 텍스트 채팅은 API 키를 등록하면 사용할 수 있어요. Live2D 모델, 음성 및 영구 기억 기능은 아직 연결되지 않았습니다."
             textSize = 12f
             gravity = Gravity.CENTER
             setTextColor(0xFF9DB2C8.toInt())
@@ -112,6 +117,7 @@ class MainActivity : Activity() {
         content.addView(overlay, fullWidth())
         content.addView(start, fullWidth())
         content.addView(stop, fullWidth())
+        content.addView(geminiSettings, fullWidth())
         content.addView(import, fullWidth())
         content.addView(note, fullWidth())
 
@@ -285,6 +291,7 @@ class MainActivity : Activity() {
             "알림 권한: 미허용"
         }
         val bundleSelected = prefs.getString("bundle_uri", null) != null
+        val geminiConfigured = GeminiApiKeyStore(this).hasSavedKey()
 
         status.text = buildString {
             append(if (overlayGranted) "화면 위 표시: 허용됨" else "화면 위 표시: 미허용")
