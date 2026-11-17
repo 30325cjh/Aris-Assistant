@@ -298,6 +298,8 @@ class MainActivity : Activity() {
             append("\n")
             append(notificationState)
             append("\n")
+            append(if (geminiConfigured) "Gemini API 키: 암호화 저장됨" else "Gemini API 키: 미등록")
+            append("\n")
             append(if (bundleSelected) "Unity 파일: 선택됨 (렌더링하지 않음)" else "Unity 파일: 미선택")
         }
     }
