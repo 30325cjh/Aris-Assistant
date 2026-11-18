@@ -60,11 +60,18 @@ Toolchain pinned by the project/CI:
 - compileSdk / targetSdk: 35
 - minSdk: 26
 
-The repository does not currently include the Gradle Wrapper. CI installs the exact Gradle 8.9 distribution with gradle/actions/setup-gradle@v5 and runs:
+The repository includes a checksum-verified Gradle 8.9 Wrapper bootstrap for Linux/macOS and Windows. The official Gradle 8.9 wrapper JAR is stored as base64 text and materialized locally by the launcher; its SHA-256 is checked before Java executes it. The downloaded Gradle distribution is independently verified by the Wrapper using the official distribution checksum.
 
-    gradle --no-daemon testDebugUnitTest assembleDebug
+Linux/macOS:
 
-For a local build, install Gradle 8.9, JDK 17, and Android SDK platform/build tools for API 35, then run the same command. The app uses kotlinx-coroutines-android 1.9.0 for lifecycle-scoped asynchronous network work. The CI workflow uploads Aris-Assistant-debug-apk when the build succeeds.
+    chmod +x gradlew
+    ./gradlew --no-daemon testDebugUnitTest assembleDebug
+
+Windows:
+
+    .\\gradlew.bat --no-daemon testDebugUnitTest assembleDebug
+
+The first invocation requires network access to download the pinned Gradle 8.9 binary distribution. Install JDK 17 and Android SDK platform/build tools for API 35. CI runs the same wrapper command and uses gradle/actions/setup-gradle@v5 for caching and wrapper validation. The generated binary wrapper JAR is ignored by Git; the checksum-verified base64 source remains tracked. The app uses kotlinx-coroutines-android 1.9.0 for lifecycle-scoped asynchronous network work. The CI workflow uploads Aris-Assistant-debug-apk when the build succeeds.
 
 ## Automated tests
 

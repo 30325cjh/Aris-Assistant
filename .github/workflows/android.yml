@@ -29,18 +29,21 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: Set up pinned Gradle
-        uses: gradle/actions/setup-gradle@v5
-        with:
-          gradle-version: '8.9'
+      - name: Make Gradle launcher executable
+        run: chmod +x gradlew
 
-      - name: Verify toolchain
+      - name: Bootstrap and verify Gradle 8.9 wrapper
+        run: ./gradlew --version
+
+      - name: Set up Gradle caching and wrapper validation
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Verify official wrapper JAR checksum
         run: |
-          java -version
-          gradle --version
+          echo "498495120a03b9a6ab5d155f5de3c8f0d986a449153702fb80fc80e134484f17  gradle/wrapper/gradle-wrapper.jar" | sha256sum --check
 
       - name: Run unit tests and build debug APK
-        run: gradle --no-daemon testDebugUnitTest assembleDebug
+        run: ./gradlew --no-daemon testDebugUnitTest assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v7.0.2
