@@ -59,6 +59,7 @@ class FloatingAssistantService : Service() {
     private val positionPrefs by lazy { getSharedPreferences("aris_overlay", MODE_PRIVATE) }
     private lateinit var conversationStore: ConversationStore
     private var activeConversationId = ""
+    private var conversationGeneration = 0
     private val overlayPermissionListener = AppOpsManager.OnOpChangedListener { op, _ ->
         if (op == AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW && !Settings.canDrawOverlays(this)) {
             stopSelf()
@@ -427,6 +428,7 @@ class FloatingAssistantService : Service() {
         val clearHistory = Button(this).apply {
             text = "현재 대화 비우기"
             setOnClickListener {
+                conversationGeneration += 1
                 conversationStore.clearConversation(activeConversationId)
                 chatHistory.clear()
                 output.text = "현재 대화의 메시지를 기기에서 삭제했어요."
@@ -554,10 +556,12 @@ class FloatingAssistantService : Service() {
             return
         }
 
+        val requestConversationId = activeConversationId
+        val requestGeneration = conversationGeneration
         val userTurn = ConversationTurn(ConversationRole.USER, request.userMessage)
         val storedUserMessage = try {
             conversationStore.appendMessage(
-                activeConversationId,
+                requestConversationId,
                 ConversationRole.USER,
                 request.userMessage
             )
@@ -573,40 +577,54 @@ class FloatingAssistantService : Service() {
         serviceScope.launch {
             try {
                 val response = GeminiProvider(keyStore).generateReply(request)
+                if (requestGeneration != conversationGeneration) {
+                    conversationStore.deleteMessage(storedUserMessage.id)
+                    return@launch
+                }
                 val assistantTurn = ConversationTurn(ConversationRole.ASSISTANT, response.message)
                 var persistenceWarning = false
                 try {
                     conversationStore.appendMessage(
-                        activeConversationId,
+                        requestConversationId,
                         ConversationRole.ASSISTANT,
                         response.message
                     )
                 } catch (_: Exception) {
                     persistenceWarning = true
                 }
-                chatHistory.add(assistantTurn)
-                trimChatHistory()
-                output.text = renderChatHistory()
-                if (persistenceWarning) {
-                    output.append("\n\n답변은 받았지만 기기에 저장하지 못했어요.")
+                if (activeConversationId == requestConversationId) {
+                    chatHistory.add(assistantTurn)
+                    trimChatHistory()
+                    output.text = renderChatHistory()
+                    if (persistenceWarning) {
+                        output.append("\n\n답변은 받았지만 기기에 저장하지 못했어요.")
+                    }
                 }
             } catch (cancelled: CancellationException) {
-                removeFailedUserTurn(userTurn, storedUserMessage.id)
+                removeFailedUserTurn(userTurn, storedUserMessage.id, requestConversationId)
                 throw cancelled
             } catch (error: GeminiProviderException) {
-                removeFailedUserTurn(userTurn, storedUserMessage.id)
-                output.text = error.userMessage
+                removeFailedUserTurn(userTurn, storedUserMessage.id, requestConversationId)
+                if (activeConversationId == requestConversationId && requestGeneration == conversationGeneration) {
+                    output.text = error.userMessage
+                }
             } catch (_: Exception) {
-                removeFailedUserTurn(userTurn, storedUserMessage.id)
-                output.text = "답변을 가져오지 못했어요. 네트워크와 API 키를 확인한 뒤 다시 시도해 주세요."
+                removeFailedUserTurn(userTurn, storedUserMessage.id, requestConversationId)
+                if (activeConversationId == requestConversationId && requestGeneration == conversationGeneration) {
+                    output.text = "답변을 가져오지 못했어요. 네트워크와 API 키를 확인한 뒤 다시 시도해 주세요."
+                }
             } finally {
                 sendButton.isEnabled = true
             }
         }
     }
 
-    private fun removeFailedUserTurn(turn: ConversationTurn, storedMessageId: String) {
-        if (chatHistory.lastOrNull() == turn) {
+    private fun removeFailedUserTurn(
+        turn: ConversationTurn,
+        storedMessageId: String,
+        requestConversationId: String
+    ) {
+        if (activeConversationId == requestConversationId && chatHistory.lastOrNull() == turn) {
             chatHistory.removeAt(chatHistory.lastIndex)
         }
         try {

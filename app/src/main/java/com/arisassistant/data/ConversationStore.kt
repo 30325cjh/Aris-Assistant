@@ -272,12 +272,16 @@ internal class ConversationStore(
             ?: return false
         val deleted = db.delete("messages", "_id = ?", arrayOf(messageId)) > 0
         if (deleted) {
-            db.update(
-                "conversations",
-                ContentValues().apply { put("updated_at", System.currentTimeMillis()) },
-                "_id = ?",
+            val remaining = DatabaseUtils.longForQuery(
+                db,
+                "SELECT COUNT(*) FROM messages WHERE conversation_id = ?",
                 arrayOf(conversationId)
             )
+            val values = ContentValues().apply {
+                put("updated_at", System.currentTimeMillis())
+                if (remaining == 0L) put("title", DEFAULT_TITLE)
+            }
+            db.update("conversations", values, "_id = ?", arrayOf(conversationId))
         }
         return deleted
     }
@@ -326,8 +330,13 @@ internal class ConversationStore(
             arrayOf(conversationId)
         ) > 0
         if (deleted && wasActive) {
-            preferences.edit().remove(KEY_ACTIVE_CONVERSATION).commit()
-            activeConversationId()
+            val nextConversation = listConversations().firstOrNull()
+            if (nextConversation != null) {
+                preferences.edit().putString(KEY_ACTIVE_CONVERSATION, nextConversation.id).commit()
+            } else {
+                preferences.edit().remove(KEY_ACTIVE_CONVERSATION).commit()
+                createConversation()
+            }
         }
         return deleted
     }

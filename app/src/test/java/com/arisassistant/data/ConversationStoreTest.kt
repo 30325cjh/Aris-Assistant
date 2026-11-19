@@ -39,8 +39,8 @@ class ConversationStoreTest {
             assertEquals(secondId, store.activeConversationId())
             assertEquals(2, store.listConversations().size)
             assertTrue(store.deleteConversation(secondId))
-            assertFalse(store.activeConversationId() == secondId)
-            assertEquals(2, store.listConversations().size)
+            assertEquals(firstId, store.activeConversationId())
+            assertEquals(1, store.listConversations().size)
         } finally {
             store.close()
             RuntimeEnvironment.getApplication().deleteDatabase(databaseName)
