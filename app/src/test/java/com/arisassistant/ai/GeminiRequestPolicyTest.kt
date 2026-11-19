@@ -46,4 +46,29 @@ class GeminiRequestPolicyTest {
     fun rejectsBlankCurrentMessage() {
         AssistantRequest(userMessage = "   ").normalizedForGemini()
     }
+
+    @Test
+    fun savedMemoriesAreTrimmedBoundedAndLimited() {
+        val memories = listOf("x".repeat(MAX_GEMINI_MEMORY_CHARS + 10)) +
+            (0 until MAX_GEMINI_MEMORY_ITEMS + 3).map { index -> " memory-$index " }
+
+        val normalized = AssistantRequest(
+            userMessage = "hello",
+            savedMemories = memories
+        ).normalizedForGemini()
+
+        assertEquals(MAX_GEMINI_MEMORY_ITEMS, normalized.savedMemories.size)
+        assertEquals(MAX_GEMINI_MEMORY_CHARS, normalized.savedMemories.first().length)
+        assertEquals("memory-0", normalized.savedMemories[1])
+    }
+
+    @Test
+    fun blankMemoriesAreNotSent() {
+        val normalized = AssistantRequest(
+            userMessage = "hello",
+            savedMemories = listOf(" ", "  ")
+        ).normalizedForGemini()
+
+        assertEquals(emptyList<String>(), normalized.savedMemories)
+    }
 }

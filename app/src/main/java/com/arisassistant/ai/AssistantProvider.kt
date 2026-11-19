@@ -17,7 +17,8 @@ internal data class ConversationTurn(
 
 internal data class AssistantRequest(
     val userMessage: String,
-    val recentHistory: List<ConversationTurn> = emptyList()
+    val recentHistory: List<ConversationTurn> = emptyList(),
+    val savedMemories: List<String> = emptyList()
 )
 
 /**
