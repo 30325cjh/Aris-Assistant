@@ -5,6 +5,7 @@ plugins {
 dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1")
 }
 
 android {
@@ -26,5 +27,9 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+    }
+
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
     }
 }

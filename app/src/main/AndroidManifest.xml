@@ -24,6 +24,10 @@
             android:name=".GeminiSettingsActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".ConversationMemoryActivity"
+            android:exported="false" />
+
         <service
             android:name=".FloatingAssistantService"
             android:exported="false"

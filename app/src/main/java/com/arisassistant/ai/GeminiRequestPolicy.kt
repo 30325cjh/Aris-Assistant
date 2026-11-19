@@ -2,10 +2,12 @@ package com.arisassistant.ai
 
 internal const val MAX_GEMINI_MESSAGE_CHARS = 4_000
 internal const val MAX_GEMINI_HISTORY_TURNS = 20
+internal const val MAX_GEMINI_MEMORY_ITEMS = 10
+internal const val MAX_GEMINI_MEMORY_CHARS = 500
 
 /**
- * Bounds user-controlled input and conversation context before it is sent
- * over the network. This policy does not execute or encode device actions.
+ * Bounds user-controlled input, conversation history, and explicitly opted-in
+ * memory context before any provider request is sent.
  */
 internal fun AssistantRequest.normalizedForGemini(): AssistantRequest {
     val message = userMessage.trim().take(MAX_GEMINI_MESSAGE_CHARS)
@@ -20,5 +22,17 @@ internal fun AssistantRequest.normalizedForGemini(): AssistantRequest {
             turn.copy(text = turn.text.trim().take(MAX_GEMINI_MESSAGE_CHARS))
         }
 
-    return copy(userMessage = message, recentHistory = history)
+    val memories = savedMemories
+        .asSequence()
+        .map(String::trim)
+        .filter(String::isNotEmpty)
+        .take(MAX_GEMINI_MEMORY_ITEMS)
+        .map { it.take(MAX_GEMINI_MEMORY_CHARS) }
+        .toList()
+
+    return copy(
+        userMessage = message,
+        recentHistory = history,
+        savedMemories = memories
+    )
 }

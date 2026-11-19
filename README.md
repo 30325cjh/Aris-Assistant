@@ -17,11 +17,13 @@ Personal-use Android floating assistant prototype, implemented with Kotlin.
 
 The floating view and character remain UI prototypes. `CharacterRenderer` separates the floating host from the character view, and `PlaceholderCharacterRenderer` remains the active fallback; the avatar is **not** a Live2D or 3D model.
 
-The expanded chat now sends text to the Gemini REST API after the user supplies a key in the app's Gemini settings screen. Local expression-test words still update the placeholder label without making a network request. Conversation context is held only in the running floating service and can be cleared from the chat panel; it is not persisted across service restarts.
+The expanded chat sends text to the Gemini REST API after the user supplies a key in the app's Gemini settings screen. Local expression-test words still update the placeholder label without making a network request. Conversations and messages are stored in a private, device-local SQLite database. The user can create, select, rename, inspect, edit, and delete conversations or individual messages.
+
+Saved memories are never extracted automatically. The user must add, edit, or delete each memory in the Conversation / Memory screen. Memory context is off by default; only when the user explicitly enables it are up to 10 saved memories (maximum 500 characters each) included in Gemini requests. Nothing is synced to a cloud service. The SQLite content is app-private but is not separately encrypted at the database layer; users should not store passwords, recovery codes, or other secrets as memories.
 
 Remaining approved features:
 - A real Live2D `CharacterRenderer` implementation and rigged upper-body model (requires verified SDK/runtime compatibility, appropriate rights, and layered model assets).
-- Streaming responses, durable conversation storage, and user-managed long-term memory.
+- Streaming responses and optional user-managed speech input/output with audio-synchronized lip movement.
 - Optional speech input/output, speaking-state UI, and audio-synchronized lip movement.
 - Validated emotion directives connected to the renderer and allowlisted Android app/search/settings actions with confirmation for consequential actions.
 
@@ -48,7 +50,9 @@ See [docs/M2_LIVE2D_RUNTIME_EVALUATION.md](docs/M2_LIVE2D_RUNTIME_EVALUATION.md)
 - The app requests INTERNET only for the user-initiated Gemini text request; cleartext traffic remains disabled.
 - The Gemini API key is entered by the user and encrypted at rest with Android Keystore AES-GCM. It is not bundled in the APK or repository. Rooted/instrumented devices can still expose a key while it is in use; restrict it with the provider's key controls.
 - The app does not request microphone permission or collect audio in this milestone.
-- Conversation context is transient in service memory and has a chat-panel clear control; it is not yet durable or synced.
+- Conversations and saved memories are stored locally in the app-private SQLite database. No cloud sync is implemented. Conversation text and saved-memory text are not separately encrypted at the SQLite layer; do not store secrets in them.
+- Saved memories are manually added by the user and are not sent to Gemini by default. An explicit opt-in switch sends up to 10 saved memories (500 characters each) with Gemini requests.
+- The Conversation / Memory screen supports selecting, renaming, inspecting, editing, and deleting conversations/messages, plus creating, editing, and deleting saved memories.
 
 ## Build
 

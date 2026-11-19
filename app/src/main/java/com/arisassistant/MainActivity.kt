@@ -101,9 +101,12 @@ class MainActivity : Activity() {
         val geminiSettings = actionButton("Gemini API 키 설정") {
             startActivity(Intent(this, GeminiSettingsActivity::class.java))
         }
+        val conversationMemory = actionButton("대화 및 기억 관리") {
+            startActivity(Intent(this, ConversationMemoryActivity::class.java))
+        }
         val import = actionButton("기존 Unity 파일 선택 (실험용)") { chooseBundle() }
         val note = TextView(this).apply {
-            text = "캐릭터는 아직 UI 자리표시자입니다. Gemini 텍스트 채팅은 API 키를 등록하면 사용할 수 있어요. Live2D 모델, 음성 및 영구 기억 기능은 아직 연결되지 않았습니다."
+            text = "대화는 기기 내부에 저장하고 직접 관리할 수 있어요. 기억은 사용자가 직접 추가하며, Gemini 전송은 별도 설정을 켠 경우에만 이뤄집니다. Live2D 모델과 음성 기능은 아직 연결되지 않았습니다."
             textSize = 12f
             gravity = Gravity.CENTER
             setTextColor(0xFF9DB2C8.toInt())
@@ -118,6 +121,7 @@ class MainActivity : Activity() {
         content.addView(start, fullWidth())
         content.addView(stop, fullWidth())
         content.addView(geminiSettings, fullWidth())
+        content.addView(conversationMemory, fullWidth())
         content.addView(import, fullWidth())
         content.addView(note, fullWidth())
 

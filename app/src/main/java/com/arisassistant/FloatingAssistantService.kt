@@ -7,6 +7,7 @@ import com.arisassistant.ai.GeminiApiKeyStore
 import com.arisassistant.ai.GeminiProvider
 import com.arisassistant.ai.GeminiProviderException
 import com.arisassistant.ai.normalizedForGemini
+import com.arisassistant.data.ConversationStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -42,6 +43,7 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import kotlin.math.abs
 
@@ -55,6 +57,8 @@ class FloatingAssistantService : Service() {
     private var windowManager: WindowManager? = null
     private var appOpsManager: AppOpsManager? = null
     private val positionPrefs by lazy { getSharedPreferences("aris_overlay", MODE_PRIVATE) }
+    private lateinit var conversationStore: ConversationStore
+    private var activeConversationId = ""
     private val overlayPermissionListener = AppOpsManager.OnOpChangedListener { op, _ ->
         if (op == AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW && !Settings.canDrawOverlays(this)) {
             stopSelf()
@@ -87,6 +91,8 @@ class FloatingAssistantService : Service() {
             stopSelf()
             return
         }
+        conversationStore = ConversationStore(this)
+        loadActiveConversation()
         watchOverlayPermission()
         showAvatar()
     }
@@ -371,6 +377,7 @@ class FloatingAssistantService : Service() {
             expandCharacter()
             return
         }
+        loadActiveConversation()
 
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -390,15 +397,20 @@ class FloatingAssistantService : Service() {
             setPadding(0, dp(8), 0, dp(10))
         }
         val output = TextView(this).apply {
-            text = chatHistory.lastOrNull()?.text
-                ?: if (GeminiApiKeyStore(this@FloatingAssistantService).hasSavedKey()) {
+            text = renderChatHistory().ifBlank {
+                if (GeminiApiKeyStore(this@FloatingAssistantService).hasSavedKey()) {
                     "메시지를 입력하면 Gemini가 답변해요."
                 } else {
                     "먼저 앱에서 Gemini API 키를 설정해 주세요."
                 }
+            }
             textSize = 14f
             setTextColor(Color.WHITE)
             setPadding(0, dp(4), 0, dp(10))
+        }
+        val outputScroll = ScrollView(this).apply {
+            isFillViewport = false
+            addView(output)
         }
         val input = EditText(this).apply {
             hint = "메시지 입력 · 웃음/슬픔 등 표정 테스트"
@@ -408,7 +420,50 @@ class FloatingAssistantService : Service() {
             setHintTextColor(0xFF9DB2C8.toInt())
             setBackgroundColor(0xFF1A3555.toInt())
         }
-        val buttons = LinearLayout(this).apply {
+        val historyActions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+        }
+        val clearHistory = Button(this).apply {
+            text = "현재 대화 비우기"
+            setOnClickListener {
+                conversationStore.clearConversation(activeConversationId)
+                chatHistory.clear()
+                output.text = "현재 대화의 메시지를 기기에서 삭제했어요."
+            }
+        }
+        val newConversation = Button(this).apply {
+            text = "새 대화"
+            setOnClickListener {
+                activeConversationId = conversationStore.createConversation()
+                chatHistory.clear()
+                output.text = "새 대화를 시작했어요."
+            }
+        }
+        historyActions.addView(clearHistory)
+        historyActions.addView(newConversation)
+
+        val managementActions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+        }
+        val manageMemory = Button(this).apply {
+            text = "대화·기억 관리"
+            setOnClickListener {
+                closeChat()
+                try {
+                    startActivity(
+                        Intent(this@FloatingAssistantService, ConversationMemoryActivity::class.java)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                } catch (_: Exception) {
+                    stopSelf()
+                }
+            }
+        }
+        managementActions.addView(manageMemory)
+
+        val chatActions = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.END
         }
@@ -436,22 +491,19 @@ class FloatingAssistantService : Service() {
             }
             input.text.clear()
         }
-        val clearHistory = Button(this).apply {
-            text = "대화 지우기"
-            setOnClickListener {
-                chatHistory.clear()
-                output.text = "현재 플로팅 세션의 대화를 지웠어요."
-            }
-        }
+        chatActions.addView(close)
+        chatActions.addView(send)
 
-        buttons.addView(clearHistory)
-        buttons.addView(close)
-        buttons.addView(send)
         panel.addView(heading)
         panel.addView(subtitle)
-        panel.addView(output)
+        panel.addView(outputScroll, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            dp(160)
+        ))
         panel.addView(input)
-        panel.addView(buttons)
+        panel.addView(historyActions)
+        panel.addView(managementActions)
+        panel.addView(chatActions)
 
         val params = WindowManager.LayoutParams(
             dp(300),
@@ -494,7 +546,8 @@ class FloatingAssistantService : Service() {
         val request = try {
             AssistantRequest(
                 userMessage = message,
-                recentHistory = chatHistory.toList()
+                recentHistory = chatHistory.toList(),
+                savedMemories = conversationStore.enabledMemoryContext()
             ).normalizedForGemini()
         } catch (_: IllegalArgumentException) {
             output.text = "메시지가 비어 있어요. 다시 입력해 주세요."
@@ -502,24 +555,49 @@ class FloatingAssistantService : Service() {
         }
 
         val userTurn = ConversationTurn(ConversationRole.USER, request.userMessage)
+        val storedUserMessage = try {
+            conversationStore.appendMessage(
+                activeConversationId,
+                ConversationRole.USER,
+                request.userMessage
+            )
+        } catch (_: Exception) {
+            output.text = "대화를 기기에 저장하지 못했어요. 저장 공간을 확인한 뒤 다시 시도해 주세요."
+            return
+        }
+
         chatHistory.add(userTurn)
         sendButton.isEnabled = false
-        output.text = "나: ${request.userMessage}\n\n아리스가 답변을 준비하고 있어요..."
+        output.text = renderChatHistory() + "\n\n아리스가 답변을 준비하고 있어요..."
 
         serviceScope.launch {
             try {
                 val response = GeminiProvider(keyStore).generateReply(request)
-                chatHistory.add(ConversationTurn(ConversationRole.ASSISTANT, response.message))
+                val assistantTurn = ConversationTurn(ConversationRole.ASSISTANT, response.message)
+                var persistenceWarning = false
+                try {
+                    conversationStore.appendMessage(
+                        activeConversationId,
+                        ConversationRole.ASSISTANT,
+                        response.message
+                    )
+                } catch (_: Exception) {
+                    persistenceWarning = true
+                }
+                chatHistory.add(assistantTurn)
                 trimChatHistory()
-                output.text = "나: ${request.userMessage}\n\n아리스: ${response.message}"
+                output.text = renderChatHistory()
+                if (persistenceWarning) {
+                    output.append("\n\n답변은 받았지만 기기에 저장하지 못했어요.")
+                }
             } catch (cancelled: CancellationException) {
-                removeFailedUserTurn(userTurn)
+                removeFailedUserTurn(userTurn, storedUserMessage.id)
                 throw cancelled
             } catch (error: GeminiProviderException) {
-                removeFailedUserTurn(userTurn)
+                removeFailedUserTurn(userTurn, storedUserMessage.id)
                 output.text = error.userMessage
             } catch (_: Exception) {
-                removeFailedUserTurn(userTurn)
+                removeFailedUserTurn(userTurn, storedUserMessage.id)
                 output.text = "답변을 가져오지 못했어요. 네트워크와 API 키를 확인한 뒤 다시 시도해 주세요."
             } finally {
                 sendButton.isEnabled = true
@@ -527,11 +605,31 @@ class FloatingAssistantService : Service() {
         }
     }
 
-    private fun removeFailedUserTurn(turn: ConversationTurn) {
+    private fun removeFailedUserTurn(turn: ConversationTurn, storedMessageId: String) {
         if (chatHistory.lastOrNull() == turn) {
             chatHistory.removeAt(chatHistory.lastIndex)
         }
+        try {
+            conversationStore.deleteMessage(storedMessageId)
+        } catch (_: Exception) {
+        }
     }
+
+    private fun loadActiveConversation() {
+        activeConversationId = conversationStore.activeConversationId()
+        chatHistory.clear()
+        chatHistory.addAll(
+            conversationStore.listMessages(activeConversationId, 20).map { stored ->
+                ConversationTurn(stored.role, stored.text)
+            }
+        )
+    }
+
+    private fun renderChatHistory(): String =
+        chatHistory.takeLast(20).joinToString("\n\n") { turn ->
+            val speaker = if (turn.role == ConversationRole.USER) "나" else "아리스"
+            "$speaker: ${turn.text}"
+        }
 
     private fun trimChatHistory() {
         while (chatHistory.size > 20) {
@@ -587,6 +685,12 @@ class FloatingAssistantService : Service() {
         appOpsManager?.stopWatchingMode(overlayPermissionListener)
         appOpsManager = null
         closeChat()
+        if (::conversationStore.isInitialized) {
+            try {
+                conversationStore.close()
+            } catch (_: Exception) {
+            }
+        }
         val renderer = characterRenderer
         if (characterRendererAttached) {
             try {
