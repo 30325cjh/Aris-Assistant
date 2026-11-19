@@ -49,9 +49,8 @@ class GeminiRequestPolicyTest {
 
     @Test
     fun savedMemoriesAreTrimmedBoundedAndLimited() {
-        val memories = (0 until MAX_GEMINI_MEMORY_ITEMS + 3).map { index ->
-            " memory-$index "
-        } + "x".repeat(MAX_GEMINI_MEMORY_CHARS + 10)
+        val memories = listOf("x".repeat(MAX_GEMINI_MEMORY_CHARS + 10)) +
+            (0 until MAX_GEMINI_MEMORY_ITEMS + 3).map { index -> " memory-$index " }
 
         val normalized = AssistantRequest(
             userMessage = "hello",
@@ -59,8 +58,8 @@ class GeminiRequestPolicyTest {
         ).normalizedForGemini()
 
         assertEquals(MAX_GEMINI_MEMORY_ITEMS, normalized.savedMemories.size)
-        assertEquals("memory-0", normalized.savedMemories.first())
-        assertEquals(MAX_GEMINI_MEMORY_CHARS, normalized.savedMemories.last().length)
+        assertEquals(MAX_GEMINI_MEMORY_CHARS, normalized.savedMemories.first().length)
+        assertEquals("memory-0", normalized.savedMemories[1])
     }
 
     @Test
