@@ -60,7 +60,7 @@ internal class AndroidKeystoreConversationCipher : ConversationCipher {
     override fun decrypt(envelope: String, associatedData: String): String {
         require(envelope.startsWith(PREFIX)) { "Conversation content is not encrypted or uses an unsupported format." }
         val payload = Base64.decode(envelope.removePrefix(PREFIX), Base64.NO_WRAP)
-        require(payload.size > IV_LENGTH_BYTES + GCM_TAG_LENGTH_BYTES / 8) {
+        require(payload.size > IV_LENGTH_BYTES + GCM_TAG_LENGTH_BITS / 8) {
             "Encrypted conversation content is truncated."
         }
 
@@ -92,6 +92,5 @@ internal class AndroidKeystoreConversationCipher : ConversationCipher {
         const val PREFIX = "enc:v1:"
         const val IV_LENGTH_BYTES = 12
         const val GCM_TAG_LENGTH_BITS = 128
-        const val GCM_TAG_LENGTH_BYTES = 128
     }
 }
