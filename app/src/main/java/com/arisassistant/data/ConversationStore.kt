@@ -50,7 +50,7 @@ internal class ConversationStore(
         super.onConfigure(db)
         db.setForeignKeyConstraintsEnabled(true)
         // Prevent deleted plaintext pages from lingering during the v1 -> v2 migration.
-        db.execSQL("PRAGMA secure_delete = ON")
+        db.rawQuery("PRAGMA secure_delete = ON", null).use { cursor -> cursor.moveToFirst() }
     }
 
     override fun onCreate(db: SQLiteDatabase) {
