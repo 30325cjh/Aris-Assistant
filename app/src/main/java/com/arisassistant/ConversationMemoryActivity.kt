@@ -25,9 +25,37 @@ class ConversationMemoryActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        store = ConversationStore(this)
-        buildScreen()
-        refreshLists()
+        try {
+            store = ConversationStore(this)
+            buildScreen()
+            refreshLists()
+        } catch (_: Exception) {
+            showStorageUnavailable()
+        }
+    }
+
+    private fun showStorageUnavailable() {
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(36), dp(24), dp(28))
+            setBackgroundColor(0xFF08172D.toInt())
+        }
+        val title = TextView(this).apply {
+            text = "대화 저장소를 열 수 없어요"
+            textSize = 22f
+            setTextColor(Color.WHITE)
+        }
+        val message = TextView(this).apply {
+            text = "저장된 대화와 기억을 안전하게 복호화하지 못했습니다. 기존 데이터를 자동으로 삭제하거나 새 키로 덮어쓰지 않았어요. Android Keystore 키가 손실되었거나 데이터가 손상된 경우 복구할 수 없으니, 앱 데이터 삭제나 재설치를 먼저 하지 마세요."
+            textSize = 14f
+            setTextColor(0xFFD5E6F5.toInt())
+            setPadding(0, dp(16), 0, dp(20))
+        }
+        val close = actionButton("닫기") { finish() }
+        content.addView(title, fullWidth())
+        content.addView(message, fullWidth())
+        content.addView(close, fullWidth())
+        setContentView(content)
     }
 
     private fun buildScreen() {
@@ -43,7 +71,7 @@ class ConversationMemoryActivity : Activity() {
             setTextColor(Color.WHITE)
         }
         status = TextView(this).apply {
-            text = "대화와 기억은 이 기기에 저장됩니다."
+            text = "대화와 기억 내용은 Android Keystore로 암호화해 이 기기에 저장됩니다."
             textSize = 13f
             setTextColor(0xFFB8F5FF.toInt())
             setPadding(dp(12), dp(12), dp(12), dp(12))
@@ -96,7 +124,7 @@ class ConversationMemoryActivity : Activity() {
         }
         content.addView(memoryContextSwitch, fullWidth())
         val privacyNote = TextView(this).apply {
-            text = "이 옵션을 켜면 저장된 기억 중 최근 10개(각 최대 500자)가 Google Gemini 요청에 포함됩니다. 기억은 기기 내부 앱 데이터베이스에만 저장되며 클라우드 동기화되지 않습니다."
+            text = "대화 제목·메시지·기억 내용은 Android Keystore AES-GCM으로 암호화해 기기에 저장하고 클라우드 동기화하지 않습니다. 이 옵션을 켜면 최근 10개 기억(각 최대 500자)이 Google Gemini 요청에 포함됩니다."
             textSize = 12f
             setTextColor(0xFFFFD28A.toInt())
         }
@@ -366,7 +394,7 @@ class ConversationMemoryActivity : Activity() {
         (value * resources.displayMetrics.density).toInt()
 
     override fun onDestroy() {
-        store.close()
+        if (::store.isInitialized) store.close()
         super.onDestroy()
     }
 }
