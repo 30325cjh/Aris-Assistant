@@ -116,13 +116,14 @@ internal class ConversationStore(
     fun createConversation(title: String = DEFAULT_TITLE): String {
         val id = UUID.randomUUID().toString()
         val now = System.currentTimeMillis()
+        val db = writableDatabase
         val values = ContentValues().apply {
             put("_id", id)
             put("title", encrypt("conversations", "title", id, normalizeConversationTitle(title)))
             put("created_at", now)
             put("updated_at", now)
         }
-        writableDatabase.insertOrThrow("conversations", null, values)
+        db.insertOrThrow("conversations", null, values)
         preferences.edit().putString(KEY_ACTIVE_CONVERSATION, id).commit()
         return id
     }
