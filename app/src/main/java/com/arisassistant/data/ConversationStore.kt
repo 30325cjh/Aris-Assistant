@@ -230,7 +230,7 @@ internal class ConversationStore(
                 currentTitle
             }
             val conversationValues = ContentValues().apply {
-                put("title", updatedTitle)
+                put("title", encrypt("conversations", "title", conversationId, updatedTitle))
                 put("updated_at", now)
             }
             db.update("conversations", conversationValues, "_id = ?", arrayOf(conversationId))
