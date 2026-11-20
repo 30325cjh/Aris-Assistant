@@ -38,7 +38,8 @@ internal data class SavedMemory(
  */
 internal class ConversationStore(
     context: Context,
-    databaseName: String = DATABASE_NAME
+    databaseName: String = DATABASE_NAME,
+    private val cipher: ConversationCipher = AndroidKeystoreConversationCipher()
 ) : SQLiteOpenHelper(context.applicationContext, databaseName, null, DATABASE_VERSION) {
     private val preferences = context.applicationContext.getSharedPreferences(
         "${databaseName}_settings",
@@ -48,6 +49,8 @@ internal class ConversationStore(
     override fun onConfigure(db: SQLiteDatabase) {
         super.onConfigure(db)
         db.setForeignKeyConstraintsEnabled(true)
+        // Prevent deleted plaintext pages from lingering during the v1 -> v2 migration.
+        db.rawQuery("PRAGMA secure_delete = ON", null).use { cursor -> cursor.moveToFirst() }
     }
 
     override fun onCreate(db: SQLiteDatabase) {
@@ -86,11 +89,20 @@ internal class ConversationStore(
             )
             """.trimIndent()
         )
+        // A newly created v2 database must have its encryption key before any
+        // content is written. Existing databases never silently recreate a key.
+        cipher.initializeForNewDatabase()
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Version 1 is the first durable schema. Future schema changes must use
-        // explicit migrations here; existing user data must never be dropped.
+        if (oldVersion < 2) {
+            // SQLiteOpenHelper runs onUpgrade in a transaction. If any row fails
+            // authentication/encryption, the whole migration rolls back.
+            cipher.initializeForNewDatabase()
+            encryptLegacyColumn(db, "conversations", "title")
+            encryptLegacyColumn(db, "messages", "text")
+            encryptLegacyColumn(db, "memories", "content")
+        }
     }
 
     @Synchronized
@@ -104,13 +116,14 @@ internal class ConversationStore(
     fun createConversation(title: String = DEFAULT_TITLE): String {
         val id = UUID.randomUUID().toString()
         val now = System.currentTimeMillis()
+        val db = writableDatabase
         val values = ContentValues().apply {
             put("_id", id)
-            put("title", normalizeConversationTitle(title))
+            put("title", encrypt("conversations", "title", id, normalizeConversationTitle(title)))
             put("created_at", now)
             put("updated_at", now)
         }
-        writableDatabase.insertOrThrow("conversations", null, values)
+        db.insertOrThrow("conversations", null, values)
         preferences.edit().putString(KEY_ACTIVE_CONVERSATION, id).commit()
         return id
     }
@@ -138,7 +151,7 @@ internal class ConversationStore(
             while (cursor.moveToNext()) {
                 result += StoredConversation(
                     id = cursor.getString(0),
-                    title = cursor.getString(1),
+                    title = decrypt("conversations", "title", cursor.getString(0), cursor.getString(1)),
                     createdAt = cursor.getLong(2),
                     updatedAt = cursor.getLong(3),
                     messageCount = cursor.getInt(4)
@@ -167,7 +180,7 @@ internal class ConversationStore(
                     id = cursor.getString(0),
                     conversationId = cursor.getString(1),
                     role = ConversationRole.valueOf(cursor.getString(2)),
-                    text = cursor.getString(3),
+                    text = decrypt("messages", "text", cursor.getString(0), cursor.getString(3)),
                     createdAt = cursor.getLong(4)
                 )
             }
@@ -192,7 +205,7 @@ internal class ConversationStore(
                 put("_id", id)
                 put("conversation_id", conversationId)
                 put("role", role.name)
-                put("text", text)
+                put("text", encrypt("messages", "text", id, text))
                 put("created_at", now)
             }
             db.insertOrThrow("messages", null, values)
@@ -206,7 +219,11 @@ internal class ConversationStore(
                 null,
                 null
             ).use { cursor ->
-                if (cursor.moveToFirst()) cursor.getString(0) else DEFAULT_TITLE
+                if (cursor.moveToFirst()) {
+                    decrypt("conversations", "title", conversationId, cursor.getString(0))
+                } else {
+                    DEFAULT_TITLE
+                }
             }
             val updatedTitle = if (role == ConversationRole.USER && currentTitle == DEFAULT_TITLE) {
                 normalizeConversationTitle(text)
@@ -214,7 +231,7 @@ internal class ConversationStore(
                 currentTitle
             }
             val conversationValues = ContentValues().apply {
-                put("title", updatedTitle)
+                put("title", encrypt("conversations", "title", conversationId, updatedTitle))
                 put("updated_at", now)
             }
             db.update("conversations", conversationValues, "_id = ?", arrayOf(conversationId))
@@ -242,7 +259,9 @@ internal class ConversationStore(
 
         val changed = db.update(
             "messages",
-            ContentValues().apply { put("text", text) },
+            ContentValues().apply {
+                put("text", encrypt("messages", "text", messageId, text))
+            },
             "_id = ?",
             arrayOf(messageId)
         ) > 0
@@ -279,7 +298,9 @@ internal class ConversationStore(
             )
             val values = ContentValues().apply {
                 put("updated_at", System.currentTimeMillis())
-                if (remaining == 0L) put("title", DEFAULT_TITLE)
+                if (remaining == 0L) {
+                    put("title", encrypt("conversations", "title", conversationId, DEFAULT_TITLE))
+                }
             }
             db.update("conversations", values, "_id = ?", arrayOf(conversationId))
         }
@@ -292,7 +313,7 @@ internal class ConversationStore(
         return writableDatabase.update(
             "conversations",
             ContentValues().apply {
-                put("title", normalized)
+                put("title", encrypt("conversations", "title", conversationId, normalized))
                 put("updated_at", System.currentTimeMillis())
             },
             "_id = ?",
@@ -309,7 +330,7 @@ internal class ConversationStore(
             db.update(
                 "conversations",
                 ContentValues().apply {
-                    put("title", DEFAULT_TITLE)
+                    put("title", encrypt("conversations", "title", conversationId, DEFAULT_TITLE))
                     put("updated_at", System.currentTimeMillis())
                 },
                 "_id = ?",
@@ -356,7 +377,7 @@ internal class ConversationStore(
             while (cursor.moveToNext()) {
                 result += SavedMemory(
                     id = cursor.getString(0),
-                    content = cursor.getString(1),
+                    content = decrypt("memories", "content", cursor.getString(0), cursor.getString(1)),
                     createdAt = cursor.getLong(2),
                     updatedAt = cursor.getLong(3)
                 )
@@ -378,7 +399,7 @@ internal class ConversationStore(
             null,
             ContentValues().apply {
                 put("_id", memory.id)
-                put("content", memory.content)
+                put("content", encrypt("memories", "content", memory.id, memory.content))
                 put("created_at", memory.createdAt)
                 put("updated_at", memory.updatedAt)
             }
@@ -392,7 +413,7 @@ internal class ConversationStore(
         return writableDatabase.update(
             "memories",
             ContentValues().apply {
-                put("content", content)
+                put("content", encrypt("memories", "content", memoryId, content))
                 put("updated_at", System.currentTimeMillis())
             },
             "_id = ?",
@@ -427,6 +448,34 @@ internal class ConversationStore(
         }
     }
 
+    private fun encrypt(table: String, column: String, rowId: String, value: String): String =
+        cipher.encrypt(value, associatedData(table, column, rowId))
+
+    private fun decrypt(table: String, column: String, rowId: String, value: String): String =
+        cipher.decrypt(value, associatedData(table, column, rowId))
+
+    private fun associatedData(table: String, column: String, rowId: String): String =
+        "aris:$table:$column:$rowId"
+
+    private fun encryptLegacyColumn(db: SQLiteDatabase, table: String, column: String) {
+        val rows = mutableListOf<Pair<String, String>>()
+        db.query(table, arrayOf("_id", column), null, null, null, null, null).use { cursor ->
+            while (cursor.moveToNext()) {
+                rows += cursor.getString(0) to cursor.getString(1)
+            }
+        }
+        rows.forEach { (id, plaintext) ->
+            val encrypted = encrypt(table, column, id, plaintext)
+            val changed = db.update(
+                table,
+                ContentValues().apply { put(column, encrypted) },
+                "_id = ?",
+                arrayOf(id)
+            )
+            check(changed == 1) { "Unable to migrate an encrypted conversation row." }
+        }
+    }
+
     private fun conversationExists(id: String): Boolean =
         readableDatabase.rawQuery(
             "SELECT 1 FROM conversations WHERE _id = ? LIMIT 1",
@@ -435,7 +484,7 @@ internal class ConversationStore(
 
     private companion object {
         const val DATABASE_NAME = "aris_conversations.db"
-        const val DATABASE_VERSION = 1
+        const val DATABASE_VERSION = 2
         const val DEFAULT_TITLE = "새 대화"
         const val KEY_ACTIVE_CONVERSATION = "active_conversation_id"
         const val KEY_MEMORY_CONTEXT_ENABLED = "memory_context_enabled"

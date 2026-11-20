@@ -36,7 +36,7 @@ The existing Unity AssetBundle picker is retained only as an experimental import
 
 `GeminiApiKeyStore` encrypts the user-supplied key with an AES-GCM key held by Android Keystore. Only the IV and ciphertext are stored in private app preferences; the key is never bundled in source, BuildConfig, or the repository. The app has a settings screen to save or delete it. A mobile app cannot make a user-owned API key completely secret from a rooted or instrumented device, so the settings screen warns users to restrict the key at Google.
 
-This is the first connected text-chat slice, not the complete assistant: responses are not streamed, chat context exists only in memory for the lifetime of the floating service, and no long-term memory or Android action executor is present. Device actions remain outside the provider response contract and must later use a separate allowlisted executor.
+This is the first connected text-chat slice, not the complete assistant: responses are not streamed, and Android action execution is not present. Conversation history is persisted locally in SQLite and restored when the floating chat opens. Explicitly saved memories remain user-managed; they are added to Gemini requests only when the separate opt-in setting is enabled. Device actions remain outside the provider response contract and must later use a separate allowlisted executor.
 
 ## Live2D runtime evaluation
 
@@ -50,7 +50,10 @@ See [docs/M2_LIVE2D_RUNTIME_EVALUATION.md](docs/M2_LIVE2D_RUNTIME_EVALUATION.md)
 - The app requests INTERNET only for the user-initiated Gemini text request; cleartext traffic remains disabled.
 - The Gemini API key is entered by the user and encrypted at rest with Android Keystore AES-GCM. It is not bundled in the APK or repository. Rooted/instrumented devices can still expose a key while it is in use; restrict it with the provider's key controls.
 - The app does not request microphone permission or collect audio in this milestone.
-- Conversations and saved memories are stored locally in the app-private SQLite database. No cloud sync is implemented. Conversation text and saved-memory text are not separately encrypted at the SQLite layer; do not store secrets in them.
+- Conversation titles, message text, and saved-memory content are AES-GCM encrypted before being written to the app-private SQLite database. The AES key is non-exportable and held by Android Keystore; per-row associated data binds each ciphertext to its table, column, and record ID. Row IDs, roles, timestamps, and message counts remain visible as database metadata. No cloud sync is implemented.
+- Database version 1 plaintext content is migrated to version 2 encryption inside SQLiteOpenHelper's upgrade transaction. A failed migration rolls back rather than dropping the user's history. SQLite secure-delete is enabled whenever the database is opened, including during migration, to reduce plaintext remnants in freed pages.
+- If the Android Keystore key is lost or invalidated, encrypted conversation content cannot be recovered; the app fails closed instead of silently generating a replacement key. The app disables Android backup, so encrypted database files are not intended to be restored independently of their Keystore key.
+- This protects data at rest in the app's database; it does not protect text while the app is unlocked, visible on screen, or being sent to Gemini after the user enables memory context. Do not store passwords, recovery codes, API keys, or other secrets in conversations or memories.
 - Saved memories are manually added by the user and are not sent to Gemini by default. An explicit opt-in switch sends up to 10 saved memories (500 characters each) with Gemini requests.
 - The Conversation / Memory screen supports selecting, renaming, inspecting, editing, and deleting conversations/messages, plus creating, editing, and deleting saved memories.
 
@@ -79,7 +82,7 @@ The first invocation requires network access to download the pinned Gradle 8.9 b
 
 ## Automated tests
 
-JVM unit tests cover the overlay tap/double-tap policy, display-bound position clamping, character presentation mapping, provider directive allowlists, and Gemini request-size/history bounds. They run in the Android Actions workflow before the debug APK is assembled. Android Keystore encryption, live Gemini requests, and overlay interactions still require device-level validation.
+JVM unit tests cover the overlay tap/double-tap policy, display-bound position clamping, character presentation mapping, provider directive allowlists, Gemini request-size/history bounds, conversation CRUD, and migration of a version 1 plaintext database to encrypted version 2 content. The migration test verifies that titles, message text, and memories are not stored as readable plaintext and remain readable after reopening with the same test key. The Android Keystore implementation, live Gemini requests, and overlay interactions still require device-level validation.
 
 ## Device validation still required
 

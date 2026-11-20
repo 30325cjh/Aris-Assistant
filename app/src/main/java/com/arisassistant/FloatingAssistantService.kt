@@ -45,6 +45,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import kotlin.math.abs
 
 class FloatingAssistantService : Service() {
@@ -92,8 +93,19 @@ class FloatingAssistantService : Service() {
             stopSelf()
             return
         }
-        conversationStore = ConversationStore(this)
-        loadActiveConversation()
+        try {
+            conversationStore = ConversationStore(this)
+            loadActiveConversation()
+        } catch (_: Exception) {
+            Toast.makeText(
+                this,
+                "대화 저장소를 안전하게 열지 못해 플로팅을 시작하지 않았어요. 기존 데이터는 삭제하지 않았습니다.",
+                Toast.LENGTH_LONG
+            ).show()
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return
+        }
         watchOverlayPermission()
         showAvatar()
     }
@@ -104,6 +116,10 @@ class FloatingAssistantService : Service() {
             return START_NOT_STICKY
         }
         if (!Settings.canDrawOverlays(this)) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        if (!::conversationStore.isInitialized) {
             stopSelf()
             return START_NOT_STICKY
         }
