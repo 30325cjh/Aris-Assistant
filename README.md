@@ -11,20 +11,19 @@ Personal-use Android floating assistant prototype, implemented with Kotlin.
 - A double-tap on the expanded placeholder opens or closes the chat panel. A double-tap on the compact launcher only expands it.
 - Chat stays hidden until the expanded character is double-tapped.
 - The persistent foreground-service notification includes a stop action and opens app settings when tapped.
-- Overlay permission is checked again when the app resumes and before overlay interactions.
+- Overlay permission is checked again when the app resumes and before overlay interactions. On Android 11+, the launcher is clamped to the safe area formed by system-bar and display-cutout insets; Android 8-10 use the legacy display-metrics fallback.
 
-## Current milestones: M1 floating shell and M2 renderer seam
+## Current implementation: M0-M3 foundation
 
 The floating view and character remain UI prototypes. `CharacterRenderer` separates the floating host from the character view, and `PlaceholderCharacterRenderer` remains the active fallback; the avatar is **not** a Live2D or 3D model.
 
 The expanded chat sends text to the Gemini REST API after the user supplies a key in the app's Gemini settings screen. Local expression-test words still update the placeholder label without making a network request. Conversations and messages are stored in a private, device-local SQLite database. The user can create, select, rename, inspect, edit, and delete conversations or individual messages.
 
-Saved memories are never extracted automatically. The user must add, edit, or delete each memory in the Conversation / Memory screen. Memory context is off by default; only when the user explicitly enables it are up to 10 saved memories (maximum 500 characters each) included in Gemini requests. Nothing is synced to a cloud service. The SQLite content is app-private but is not separately encrypted at the database layer; users should not store passwords, recovery codes, or other secrets as memories.
+Saved memories are never extracted automatically. The user must add, edit, or delete each memory in the Conversation / Memory screen. Memory context is off by default; only when the user explicitly enables it are up to 10 saved memories (maximum 500 characters each) included in Gemini requests. Nothing is synced to a cloud service. Conversation titles, message text, and saved-memory content are AES-GCM encrypted before being written to SQLite using a non-exportable Android Keystore key. Row IDs, roles, timestamps, and message counts remain visible as metadata. Do not store passwords, recovery codes, or other secrets as memories.
 
 Remaining approved features:
 - A real Live2D `CharacterRenderer` implementation and rigged upper-body model (requires verified SDK/runtime compatibility, appropriate rights, and layered model assets).
 - Streaming responses and optional user-managed speech input/output with audio-synchronized lip movement.
-- Optional speech input/output, speaking-state UI, and audio-synchronized lip movement.
 - Validated emotion directives connected to the renderer and allowlisted Android app/search/settings actions with confirmation for consequential actions.
 
 The existing Unity AssetBundle picker is retained only as an experimental import path. Choosing a .unity3d file stores its document URI; it does not load or render the bundle.
@@ -82,7 +81,7 @@ The first invocation requires network access to download the pinned Gradle 8.9 b
 
 ## Automated tests
 
-JVM unit tests cover the overlay tap/double-tap policy, display-bound position clamping, character presentation mapping, provider directive allowlists, Gemini request-size/history bounds, conversation CRUD, and migration of a version 1 plaintext database to encrypted version 2 content. The migration test verifies that titles, message text, and memories are not stored as readable plaintext and remain readable after reopening with the same test key. The Android Keystore implementation, live Gemini requests, and overlay interactions still require device-level validation.
+JVM unit tests cover the overlay tap/double-tap policy, display-bound and system-inset position clamping, character presentation mapping, provider directive allowlists, Gemini request-size/history bounds, conversation CRUD, and migration of a version 1 plaintext database to encrypted version 2 content. The migration test verifies that titles, message text, and memories are not stored as readable plaintext and remain readable after reopening with the same test key. The Android Keystore implementation, live Gemini requests, and overlay interactions still require device-level validation.
 
 ## Device validation still required
 

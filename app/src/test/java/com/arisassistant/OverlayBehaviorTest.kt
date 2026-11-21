@@ -47,4 +47,63 @@ class OverlayBehaviorTest {
             )
         )
     }
+
+    @Test
+    fun overlayStaysInsideSystemBarAndCutoutSafeArea() {
+        val insets = mapOf(
+            "insetLeft" to 8,
+            "insetTop" to 24,
+            "insetRight" to 12,
+            "insetBottom" to 48
+        )
+        assertEquals(
+            OverlayPosition(x = 12, y = 24),
+            clampOverlayPosition(
+                x = 0,
+                y = 0,
+                screenWidth = 400,
+                screenHeight = 800,
+                windowWidth = 120,
+                windowHeight = 100,
+                insetLeft = insets.getValue("insetLeft"),
+                insetTop = insets.getValue("insetTop"),
+                insetRight = insets.getValue("insetRight"),
+                insetBottom = insets.getValue("insetBottom")
+            )
+        )
+        assertEquals(
+            OverlayPosition(x = 272, y = 652),
+            clampOverlayPosition(
+                x = 999,
+                y = 999,
+                screenWidth = 400,
+                screenHeight = 800,
+                windowWidth = 120,
+                windowHeight = 100,
+                insetLeft = insets.getValue("insetLeft"),
+                insetTop = insets.getValue("insetTop"),
+                insetRight = insets.getValue("insetRight"),
+                insetBottom = insets.getValue("insetBottom")
+            )
+        )
+    }
+
+    @Test
+    fun oversizedWindowAnchorsAtSafeEdgeWithoutInvalidRange() {
+        assertEquals(
+            OverlayPosition(x = 20, y = 30),
+            clampOverlayPosition(
+                x = 0,
+                y = 0,
+                screenWidth = 300,
+                screenHeight = 200,
+                windowWidth = 400,
+                windowHeight = 300,
+                insetLeft = 10,
+                insetTop = 30,
+                insetRight = 20,
+                insetBottom = 40
+            )
+        )
+    }
 }
