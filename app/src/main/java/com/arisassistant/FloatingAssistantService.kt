@@ -31,6 +31,7 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.Icon
+import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
 import android.view.GestureDetector
@@ -38,6 +39,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
+import android.view.WindowInsets
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
@@ -57,6 +59,7 @@ class FloatingAssistantService : Service() {
 
     private var windowManager: WindowManager? = null
     private var appOpsManager: AppOpsManager? = null
+    private var cachedOverlayDisplayArea: OverlayDisplayArea? = null
     private val positionPrefs by lazy { getSharedPreferences("aris_overlay", MODE_PRIVATE) }
     private lateinit var conversationStore: ConversationStore
     private var activeConversationId = ""
@@ -267,18 +270,10 @@ class FloatingAssistantService : Service() {
                         draggedThisGesture = true
                     }
                     if (dragging) {
-                        // With TOP|END gravity, x is the distance from the right edge.
-                        val metrics = resources.displayMetrics
-                        val position = clampOverlayPosition(
-                            x = downWindowX - deltaX.toInt(),
-                            y = downWindowY + deltaY.toInt(),
-                            screenWidth = metrics.widthPixels,
-                            screenHeight = metrics.heightPixels,
-                            windowWidth = params.width,
-                            windowHeight = params.height
-                        )
-                        params.x = position.x
-                        params.y = position.y
+                        // Reuse the same safe-area clamp used at launch and expansion.
+                        params.x = downWindowX - deltaX.toInt()
+                        params.y = downWindowY + deltaY.toInt()
+                        clampAvatarPosition(params)
                         try {
                             windowManager?.updateViewLayout(view, params)
                         } catch (_: Exception) {
@@ -338,17 +333,60 @@ class FloatingAssistantService : Service() {
     }
 
     private fun clampAvatarPosition(params: WindowManager.LayoutParams) {
-        val metrics = resources.displayMetrics
+        val area = overlayDisplayArea()
         val position = clampOverlayPosition(
             x = params.x,
             y = params.y,
-            screenWidth = metrics.widthPixels,
-            screenHeight = metrics.heightPixels,
+            screenWidth = area.width,
+            screenHeight = area.height,
             windowWidth = params.width,
-            windowHeight = params.height
+            windowHeight = params.height,
+            insetLeft = area.insetLeft,
+            insetTop = area.insetTop,
+            insetRight = area.insetRight,
+            insetBottom = area.insetBottom
         )
         params.x = position.x
         params.y = position.y
+    }
+
+    /**
+     * WindowMetrics includes the display bounds and the system-bar/cutout
+     * insets. Cache it during gestures and refresh it after configuration
+     * changes; API 26-29 retain the legacy full-display metrics fallback.
+     */
+    private fun overlayDisplayArea(): OverlayDisplayArea {
+        cachedOverlayDisplayArea?.let { return it }
+
+        val modernArea = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            runCatching {
+                val metrics = (windowManager ?: getSystemService(WINDOW_SERVICE) as WindowManager)
+                    .currentWindowMetrics
+                val bounds = metrics.bounds
+                val insets = metrics.windowInsets.getInsetsIgnoringVisibility(
+                    WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout()
+                )
+                OverlayDisplayArea(
+                    width = bounds.width(),
+                    height = bounds.height(),
+                    insetLeft = insets.left,
+                    insetTop = insets.top,
+                    insetRight = insets.right,
+                    insetBottom = insets.bottom
+                )
+            }.getOrNull()
+        } else {
+            null
+        }
+
+        val area = modernArea ?: resources.displayMetrics.let { metrics ->
+            OverlayDisplayArea(
+                width = metrics.widthPixels,
+                height = metrics.heightPixels
+            )
+        }
+        cachedOverlayDisplayArea = area
+        return area
     }
 
     private fun persistAvatarPosition(params: WindowManager.LayoutParams) {
@@ -703,6 +741,7 @@ class FloatingAssistantService : Service() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        cachedOverlayDisplayArea = null
         val avatar = avatarView ?: return
         val params = avatarParams ?: return
         clampAvatarPosition(params)
