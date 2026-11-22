@@ -309,6 +309,8 @@ class FloatingAssistantService : Service() {
                 }
 
                 MotionEvent.ACTION_CANCEL -> {
+                    // Keep the last drag position even when Android cancels the gesture.
+                    if (draggedThisGesture) persistAvatarPosition(params)
                     doubleTapDetected = false
                     dragging = false
                     draggedThisGesture = false
