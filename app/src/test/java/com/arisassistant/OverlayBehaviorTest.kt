@@ -23,6 +23,55 @@ class OverlayBehaviorTest {
     }
 
     @Test
+    fun doubleTapIsCommittedOnlyWhenSecondTouchDoesNotBecomeDrag() {
+        assertEquals(
+            OverlayGestureAction.NONE,
+            resolveDoubleTapCompletionAction(
+                doubleTapDetected = true,
+                dragged = true,
+                expanded = true,
+                chatOpen = false
+            )
+        )
+        assertEquals(
+            OverlayGestureAction.NONE,
+            resolveDoubleTapCompletionAction(
+                doubleTapDetected = false,
+                dragged = false,
+                expanded = true,
+                chatOpen = false
+            )
+        )
+        assertEquals(
+            OverlayGestureAction.OPEN_CHAT,
+            resolveDoubleTapCompletionAction(
+                doubleTapDetected = true,
+                dragged = false,
+                expanded = true,
+                chatOpen = false
+            )
+        )
+        assertEquals(
+            OverlayGestureAction.CLOSE_CHAT,
+            resolveDoubleTapCompletionAction(
+                doubleTapDetected = true,
+                dragged = false,
+                expanded = true,
+                chatOpen = true
+            )
+        )
+        assertEquals(
+            OverlayGestureAction.EXPAND,
+            resolveDoubleTapCompletionAction(
+                doubleTapDetected = true,
+                dragged = false,
+                expanded = false,
+                chatOpen = false
+            )
+        )
+    }
+
+    @Test
     fun draggedWindowPositionIsClampedToDisplay() {
         assertEquals(
             OverlayPosition(x = 280, y = 520),

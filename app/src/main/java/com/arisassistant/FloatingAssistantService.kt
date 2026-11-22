@@ -222,6 +222,7 @@ class FloatingAssistantService : Service() {
         clampAvatarPosition(params)
 
         val touchSlop = ViewConfiguration.get(this).scaledTouchSlop
+        var doubleTapDetected = false
         val gestures = GestureDetector(
             this,
             object : GestureDetector.SimpleOnGestureListener() {
@@ -242,7 +243,10 @@ class FloatingAssistantService : Service() {
 
                 override fun onDoubleTap(e: MotionEvent): Boolean {
                     if (!hasOverlayPermission()) return true
-                    performGestureAction(resolveDoubleTapAction(expanded, chatPanel != null))
+                    // GestureDetector reports a double tap on the second ACTION_DOWN.
+                    // Defer the action until ACTION_UP so a second touch that becomes
+                    // a drag cannot accidentally open or close the chat.
+                    doubleTapDetected = true
                     return true
                 }
             }
@@ -250,6 +254,11 @@ class FloatingAssistantService : Service() {
 
         avatar.setOnTouchListener { view, event ->
             if (!hasOverlayPermission()) return@setOnTouchListener true
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                // Reset before GestureDetector processes this down; onDoubleTap may
+                // set it again during this same event.
+                doubleTapDetected = false
+            }
             gestures.onTouchEvent(event)
 
             when (event.actionMasked) {
@@ -282,9 +291,27 @@ class FloatingAssistantService : Service() {
                     }
                 }
 
-                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_UP -> {
+                    val wasDragged = draggedThisGesture
+                    if (wasDragged) persistAvatarPosition(params)
+                    val completedDoubleTap = resolveDoubleTapCompletionAction(
+                        doubleTapDetected = doubleTapDetected,
+                        dragged = wasDragged,
+                        expanded = expanded,
+                        chatOpen = chatPanel != null
+                    )
+                    doubleTapDetected = false
+                    dragging = false
+                    draggedThisGesture = false
+                    if (completedDoubleTap != OverlayGestureAction.NONE) {
+                        performGestureAction(completedDoubleTap)
+                    }
+                }
+
                 MotionEvent.ACTION_CANCEL -> {
+                    // Keep the last drag position even when Android cancels the gesture.
                     if (draggedThisGesture) persistAvatarPosition(params)
+                    doubleTapDetected = false
                     dragging = false
                     draggedThisGesture = false
                 }

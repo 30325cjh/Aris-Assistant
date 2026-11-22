@@ -49,6 +49,22 @@ internal fun resolveDoubleTapAction(
 }
 
 /**
+ * GestureDetector reports a double tap before the second touch is complete.
+ * Commit it only after the second touch ends without crossing the drag threshold.
+ */
+internal fun resolveDoubleTapCompletionAction(
+    doubleTapDetected: Boolean,
+    dragged: Boolean,
+    expanded: Boolean,
+    chatOpen: Boolean
+): OverlayGestureAction =
+    if (!doubleTapDetected || dragged) {
+        OverlayGestureAction.NONE
+    } else {
+        resolveDoubleTapAction(expanded, chatOpen)
+    }
+
+/**
  * WindowManager uses a positive x offset to move a TOP|END window leftward.
  * Keep the window inside the display's safe rectangle so it does not disappear
  * behind status/navigation bars or a display cutout.
