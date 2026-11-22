@@ -9,6 +9,7 @@ Personal-use Android floating assistant prototype, implemented with Kotlin.
 - The compact launcher is draggable.
 - One tap on the compact launcher expands the character placeholder; a single tap on the expanded character does not collapse it.
 - A double-tap on the expanded placeholder opens or closes the chat panel. A double-tap on the compact launcher only expands it.
+- A double-tap is committed when the second touch ends; if that touch crosses the drag threshold, it remains a drag and does not toggle chat.
 - Chat stays hidden until the expanded character is double-tapped.
 - The persistent foreground-service notification includes a stop action and opens app settings when tapped.
 - Overlay permission is checked again when the app resumes and before overlay interactions. On Android 11+, the launcher is clamped to the safe area formed by system-bar and display-cutout insets; Android 8-10 use the legacy display-metrics fallback.
