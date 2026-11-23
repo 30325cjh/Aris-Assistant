@@ -38,9 +38,12 @@ class MainActivity : Activity() {
         super.onResume()
         if (!::status.isInitialized) return
 
-        if (!Settings.canDrawOverlays(this)) {
-            // Permission can be revoked while the service is running.
-            stopService(Intent(this, FloatingAssistantService::class.java))
+        if (
+            !Settings.canDrawOverlays(this) &&
+            FloatingAssistantService.isUserEnabled(this)
+        ) {
+            // Clear the sticky-restart opt-in as well as stopping the service.
+            FloatingAssistantService.requestStop(this)
         }
         refreshStatus()
 
@@ -94,7 +97,7 @@ class MainActivity : Activity() {
         val overlay = actionButton("화면 위 표시 권한 설정") { openOverlaySettings() }
         val start = actionButton("아리스 플로팅 실행") { startOverlay() }
         val stop = actionButton("플로팅 종료") {
-            stopService(Intent(this, FloatingAssistantService::class.java))
+            FloatingAssistantService.requestStop(this)
             status.text = "플로팅 종료를 요청했어요."
             refreshStatus()
         }
@@ -247,7 +250,10 @@ class MainActivity : Activity() {
             return
         }
         try {
-            startForegroundService(Intent(this, FloatingAssistantService::class.java))
+            startForegroundService(
+                Intent(this, FloatingAssistantService::class.java)
+                    .setAction(FloatingAssistantService.ACTION_START)
+            )
             status.text = "아리스 플로팅 실행을 요청했어요. 캐릭터는 한 번, 채팅은 펼쳐진 캐릭터를 두 번 터치해 주세요."
         } catch (_: SecurityException) {
             status.text = "Android가 서비스 실행을 거부했어요. 화면 위 표시 및 알림 권한을 확인해 주세요."
