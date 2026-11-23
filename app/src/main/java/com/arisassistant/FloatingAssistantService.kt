@@ -116,6 +116,20 @@ class FloatingAssistantService : Service() {
             userEnabled = isUserEnabled(this)
         )
         if (decision == FloatingServiceStartDecision.STOP) {
+            // Android may recreate a sticky foreground service with a null
+            // intent. Promote that restart before stopping it when the user's
+            // opt-in has already been cleared, so no FGS start deadline is left
+            // pending and no overlay is attached.
+            if (intent == null && !foregroundStarted) {
+                try {
+                    startForeground(NOTIFICATION_ID, buildNotification())
+                    foregroundStarted = true
+                } catch (_: SecurityException) {
+                    // The service is stopped below; there is no overlay to expose.
+                } catch (_: IllegalStateException) {
+                    // The service is stopped below; there is no overlay to expose.
+                }
+            }
             positionPrefs.edit().putBoolean(PREF_ENABLED_BY_USER, false).apply()
             stopSelfResult(startId)
             return START_NOT_STICKY
