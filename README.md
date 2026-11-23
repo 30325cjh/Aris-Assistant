@@ -5,14 +5,14 @@ Personal-use Android floating assistant prototype, implemented with Kotlin.
 ## Approved experience
 
 - First launch explains the display-over-other-apps permission before opening Android settings.
-- The user explicitly starts and stops the floating foreground service.
+- The user explicitly starts and stops the floating foreground service. An explicit start records the user's opt-in; Android may restore the sticky foreground service after ordinary process death only while that opt-in and overlay permission remain valid. The stop action clears the opt-in. The app does not auto-start at boot or bypass Android force-stop behavior.
 - The compact launcher is draggable.
 - One tap on the compact launcher expands the character placeholder; a single tap on the expanded character does not collapse it.
 - A double-tap on the expanded placeholder opens or closes the chat panel. A double-tap on the compact launcher only expands it.
 - A double-tap is committed when the second touch ends; if that touch crosses the drag threshold, it remains a drag and does not toggle chat.
 - Chat stays hidden until the expanded character is double-tapped.
 - The persistent foreground-service notification includes a stop action and opens app settings when tapped.
-- Overlay permission is checked again when the app resumes and before overlay interactions. On Android 11+, the launcher is clamped to the safe area formed by system-bar and display-cutout insets; Android 8-10 use the legacy display-metrics fallback.
+- Overlay permission is checked again when the app resumes, when a sticky service restart is received, and before overlay interactions. Revocation clears the user-enabled flag and removes the overlay. On Android 11+, the launcher is clamped to the safe area formed by system-bar and display-cutout insets; Android 8-10 use the legacy display-metrics fallback.
 
 ## Current implementation: M0-M3 foundation
 
@@ -82,7 +82,7 @@ The first invocation requires network access to download the pinned Gradle 8.9 b
 
 ## Automated tests
 
-JVM unit tests cover the overlay tap/double-tap policy, display-bound and system-inset position clamping, character presentation mapping, provider directive allowlists, Gemini request-size/history bounds, conversation CRUD, and migration of a version 1 plaintext database to encrypted version 2 content. The migration test verifies that titles, message text, and memories are not stored as readable plaintext and remain readable after reopening with the same test key. The Android Keystore implementation, live Gemini requests, and overlay interactions still require device-level validation.
+JVM unit tests cover the overlay tap/double-tap policy, display-bound and system-inset position clamping, explicit foreground-service start/stop and sticky-restart policy, character presentation mapping, provider directive allowlists, Gemini request-size/history bounds, conversation CRUD, and migration of a version 1 plaintext database to encrypted version 2 content. The migration test verifies that titles, message text, and memories are not stored as readable plaintext and remain readable after reopening with the same test key. The Android Keystore implementation, live Gemini requests, and overlay interactions still require device-level validation.
 
 ## Device validation still required
 
@@ -90,5 +90,6 @@ No emulator or physical-device test is claimed here. Verify on the target Samsun
 - Overlay permission grant and revocation.
 - Single tap, double tap, and drag separation.
 - Chat keyboard focus and close behavior.
-- Foreground notification stop action.
+- Foreground notification stop action and clearing the persisted user-enabled flag.
+- Ordinary process-death restoration while permission remains granted, plus confirmation that force-stop is not bypassed.
 - Rotation, process termination, and long-running overlay behavior.

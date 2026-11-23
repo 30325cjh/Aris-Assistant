@@ -25,6 +25,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Color
@@ -52,21 +53,37 @@ import kotlin.math.abs
 
 class FloatingAssistantService : Service() {
     companion object {
+        const val ACTION_START = "com.arisassistant.action.START_OVERLAY"
         const val ACTION_STOP = "com.arisassistant.action.STOP_OVERLAY"
         private const val NOTIFICATION_ID = 1
         private const val CHANNEL_ID = "aris_assistant"
+        private const val PREFERENCES_NAME = "aris_overlay"
+        private const val PREF_ENABLED_BY_USER = "enabled_by_user"
+
+        fun isUserEnabled(context: Context): Boolean =
+            context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+                .getBoolean(PREF_ENABLED_BY_USER, false)
+
+        fun requestStop(context: Context) {
+            context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(PREF_ENABLED_BY_USER, false)
+                .apply()
+            context.stopService(Intent(context, FloatingAssistantService::class.java))
+        }
     }
 
     private var windowManager: WindowManager? = null
     private var appOpsManager: AppOpsManager? = null
     private var cachedOverlayDisplayArea: OverlayDisplayArea? = null
-    private val positionPrefs by lazy { getSharedPreferences("aris_overlay", MODE_PRIVATE) }
+    private val positionPrefs by lazy { getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE) }
+    private var foregroundStarted = false
     private lateinit var conversationStore: ConversationStore
     private var activeConversationId = ""
     private var conversationGeneration = 0
     private val overlayPermissionListener = AppOpsManager.OnOpChangedListener { op, _ ->
         if (op == AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW && !Settings.canDrawOverlays(this)) {
-            stopSelf()
+            disableAndStop()
         }
     }
     private var avatarView: View? = null
@@ -89,45 +106,74 @@ class FloatingAssistantService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification())
-
-        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-        if (!Settings.canDrawOverlays(this)) {
-            stopSelf()
-            return
-        }
-        try {
-            conversationStore = ConversationStore(this)
-            loadActiveConversation()
-        } catch (_: Exception) {
-            Toast.makeText(
-                this,
-                "대화 저장소를 안전하게 열지 못해 플로팅을 시작하지 않았어요. 기존 데이터는 삭제하지 않았습니다.",
-                Toast.LENGTH_LONG
-            ).show()
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf()
-            return
-        }
-        watchOverlayPermission()
-        showAvatar()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            stopSelf()
+        val decision = resolveFloatingServiceStartDecision(
+            action = intent?.action,
+            startAction = ACTION_START,
+            stopAction = ACTION_STOP,
+            userEnabled = isUserEnabled(this)
+        )
+        if (decision == FloatingServiceStartDecision.STOP) {
+            positionPrefs.edit().putBoolean(PREF_ENABLED_BY_USER, false).apply()
+            stopSelfResult(startId)
             return START_NOT_STICKY
         }
+
+        // Only an explicit in-app start records user consent. A null intent is
+        // accepted solely for Android's sticky restart after process death.
+        if (intent?.action == ACTION_START) {
+            positionPrefs.edit().putBoolean(PREF_ENABLED_BY_USER, true).apply()
+        }
+
+        // Promote promptly for every start request before doing database or
+        // WindowManager work. The overlay permission is checked again below.
+        if (!foregroundStarted) {
+            try {
+                startForeground(NOTIFICATION_ID, buildNotification())
+                foregroundStarted = true
+            } catch (_: SecurityException) {
+                disableAndStop(startId)
+                return START_NOT_STICKY
+            } catch (_: IllegalStateException) {
+                disableAndStop(startId)
+                return START_NOT_STICKY
+            }
+        }
+
         if (!Settings.canDrawOverlays(this)) {
-            stopSelf()
+            disableAndStop(startId)
             return START_NOT_STICKY
         }
+
+        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         if (!::conversationStore.isInitialized) {
-            stopSelf()
-            return START_NOT_STICKY
+            try {
+                conversationStore = ConversationStore(this)
+                loadActiveConversation()
+            } catch (_: Exception) {
+                Toast.makeText(
+                    this,
+                    "대화 저장소를 안전하게 열지 못해 플로팅을 시작하지 않았어요. 기존 데이터는 삭제하지 않았습니다.",
+                    Toast.LENGTH_LONG
+                ).show()
+                disableAndStop(startId)
+                return START_NOT_STICKY
+            }
         }
+        if (appOpsManager == null) watchOverlayPermission()
         if (avatarView == null) showAvatar()
-        return START_NOT_STICKY
+        return if (avatarView != null) START_STICKY else START_NOT_STICKY
+    }
+
+    private fun disableAndStop(startId: Int? = null) {
+        positionPrefs.edit().putBoolean(PREF_ENABLED_BY_USER, false).apply()
+        if (startId != null) {
+            stopSelfResult(startId)
+        } else {
+            stopSelf()
+        }
     }
 
     private fun watchOverlayPermission() {
@@ -198,7 +244,7 @@ class FloatingAssistantService : Service() {
 
     private fun hasOverlayPermission(): Boolean {
         if (Settings.canDrawOverlays(this)) return true
-        stopSelf()
+        disableAndStop()
         return false
     }
 
@@ -286,7 +332,7 @@ class FloatingAssistantService : Service() {
                         try {
                             windowManager?.updateViewLayout(view, params)
                         } catch (_: Exception) {
-                            stopSelf()
+                            disableAndStop()
                         }
                     }
                 }
@@ -346,7 +392,7 @@ class FloatingAssistantService : Service() {
             avatarView = null
             avatarParams = null
             characterRenderer = null
-            stopSelf()
+            disableAndStop()
         }
     }
 
@@ -445,7 +491,7 @@ class FloatingAssistantService : Service() {
             windowManager?.updateViewLayout(avatar, params)
             persistAvatarPosition(params)
         } catch (_: Exception) {
-            stopSelf()
+            disableAndStop()
         }
     }
 
@@ -540,7 +586,7 @@ class FloatingAssistantService : Service() {
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     )
                 } catch (_: Exception) {
-                    stopSelf()
+                    disableAndStop()
                 }
             }
         }
@@ -776,7 +822,7 @@ class FloatingAssistantService : Service() {
             windowManager?.updateViewLayout(avatar, params)
             persistAvatarPosition(params)
         } catch (_: Exception) {
-            stopSelf()
+            disableAndStop()
         }
     }
 
@@ -813,7 +859,10 @@ class FloatingAssistantService : Service() {
         avatarView = null
         avatarParams = null
         windowManager = null
-        stopForeground(STOP_FOREGROUND_REMOVE)
+        if (foregroundStarted) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            foregroundStarted = false
+        }
         super.onDestroy()
     }
 
