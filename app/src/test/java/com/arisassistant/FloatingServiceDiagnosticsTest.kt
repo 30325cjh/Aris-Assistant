@@ -14,7 +14,7 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35])
 class FloatingServiceDiagnosticsTest {
     private val context
-        get() = RuntimeEnvironment.getApplication<android.app.Application>()
+        get() = RuntimeEnvironment.getApplication()
 
     @Test
     fun userConsentCanBePersistedAndClearedAcrossStoreInstances() {

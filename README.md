@@ -84,7 +84,7 @@ The first invocation requires network access to download the pinned Gradle 8.9 b
 
 ## Automated tests
 
-JVM unit tests cover the overlay tap/double-tap policy, display-bound and system-inset position clamping, explicit foreground-service start/stop and sticky-restart policy, character presentation mapping, provider directive allowlists, Gemini request-size/history bounds, conversation CRUD, and migration of a version 1 plaintext database to encrypted version 2 content. The migration test verifies that titles, message text, and memories are not stored as readable plaintext and remain readable after reopening with the same test key. The Android Keystore implementation, live Gemini requests, and overlay interactions still require device-level validation.
+JVM unit tests cover the overlay tap/double-tap policy, display-bound and system-inset position clamping, explicit foreground-service start/stop and sticky-restart policy, character presentation mapping, provider directive allowlists, Gemini request-size/history bounds, conversation CRUD, and migration of a version 1 plaintext database to encrypted version 2 content. They also cover service-consent persistence and privacy-safe diagnostic event/recovery snapshots. The migration test verifies that titles, message text, and memories are not stored as readable plaintext and remain readable after reopening with the same test key. The Android Keystore implementation, live Gemini requests, and overlay interactions still require device-level validation.
 
 ## Device validation still required
 
