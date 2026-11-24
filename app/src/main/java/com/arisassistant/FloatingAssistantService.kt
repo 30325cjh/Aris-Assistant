@@ -57,18 +57,12 @@ class FloatingAssistantService : Service() {
         const val ACTION_STOP = "com.arisassistant.action.STOP_OVERLAY"
         private const val NOTIFICATION_ID = 1
         private const val CHANNEL_ID = "aris_assistant"
-        private const val PREFERENCES_NAME = "aris_overlay"
-        private const val PREF_ENABLED_BY_USER = "enabled_by_user"
-
         fun isUserEnabled(context: Context): Boolean =
-            context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
-                .getBoolean(PREF_ENABLED_BY_USER, false)
+            FloatingServiceConsentStore(context).isEnabled()
 
         fun requestStop(context: Context) {
-            context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
-                .edit()
-                .putBoolean(PREF_ENABLED_BY_USER, false)
-                .apply()
+            FloatingServiceDiagnostics(context).record(FloatingServiceDiagnosticEvent.USER_STOP_REQUESTED)
+            FloatingServiceConsentStore(context).setEnabled(false)
             context.stopService(Intent(context, FloatingAssistantService::class.java))
         }
     }
@@ -76,13 +70,18 @@ class FloatingAssistantService : Service() {
     private var windowManager: WindowManager? = null
     private var appOpsManager: AppOpsManager? = null
     private var cachedOverlayDisplayArea: OverlayDisplayArea? = null
-    private val positionPrefs by lazy { getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE) }
+    private val positionPrefs by lazy { getSharedPreferences("aris_overlay", MODE_PRIVATE) }
+    private val consentStore by lazy { FloatingServiceConsentStore(this) }
+    private val diagnostics by lazy { FloatingServiceDiagnostics(this) }
+    private var restoringFromStickyRestart = false
     private var foregroundStarted = false
     private lateinit var conversationStore: ConversationStore
     private var activeConversationId = ""
     private var conversationGeneration = 0
     private val overlayPermissionListener = AppOpsManager.OnOpChangedListener { op, _ ->
         if (op == AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW && !Settings.canDrawOverlays(this)) {
+            diagnostics.record(FloatingServiceDiagnosticEvent.OVERLAY_PERMISSION_REVOKED)
+            markStickyRecoveryFailed()
             disableAndStop()
         }
     }
@@ -109,54 +108,87 @@ class FloatingAssistantService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val userEnabled = consentStore.isEnabled()
         val decision = resolveFloatingServiceStartDecision(
             action = intent?.action,
             startAction = ACTION_START,
             stopAction = ACTION_STOP,
-            userEnabled = isUserEnabled(this)
+            userEnabled = userEnabled
         )
+        restoringFromStickyRestart = intent == null && decision == FloatingServiceStartDecision.START
+
         if (decision == FloatingServiceStartDecision.STOP) {
+            when {
+                intent == null -> {
+                    diagnostics.record(FloatingServiceDiagnosticEvent.STICKY_RESTART_REJECTED)
+                    diagnostics.recordRecovery(StickyRecoveryOutcome.REJECTED)
+                }
+                intent.action == ACTION_STOP -> {
+                    diagnostics.record(FloatingServiceDiagnosticEvent.USER_STOP_REQUESTED)
+                }
+                else -> {
+                    diagnostics.record(FloatingServiceDiagnosticEvent.UNKNOWN_COMMAND_REJECTED)
+                }
+            }
+
             // Android may recreate a sticky foreground service with a null
-            // intent. Promote that restart before stopping it when the user's
-            // opt-in has already been cleared, so no FGS start deadline is left
-            // pending and no overlay is attached.
+            // intent. Promote that unapproved restart before stopping it, so
+            // no foreground-service start deadline is left pending.
             if (intent == null && !foregroundStarted) {
                 try {
                     startForeground(NOTIFICATION_ID, buildNotification())
                     foregroundStarted = true
                 } catch (_: SecurityException) {
-                    // The service is stopped below; there is no overlay to expose.
+                    // The service is stopped below; no overlay is exposed.
                 } catch (_: IllegalStateException) {
-                    // The service is stopped below; there is no overlay to expose.
+                    // The service is stopped below; no overlay is exposed.
                 }
             }
-            positionPrefs.edit().putBoolean(PREF_ENABLED_BY_USER, false).apply()
+            consentStore.setEnabled(false)
             stopSelfResult(startId)
             return START_NOT_STICKY
         }
 
-        // Only an explicit in-app start records user consent. A null intent is
-        // accepted solely for Android's sticky restart after process death.
+        // Only an explicit in-app start records user consent. Commit the tiny
+        // preference synchronously before returning START_STICKY so an
+        // ordinary process death cannot race an asynchronous apply().
         if (intent?.action == ACTION_START) {
-            positionPrefs.edit().putBoolean(PREF_ENABLED_BY_USER, true).apply()
+            diagnostics.record(FloatingServiceDiagnosticEvent.USER_START_REQUESTED)
+            if (!consentStore.setEnabled(true)) {
+                diagnostics.record(FloatingServiceDiagnosticEvent.CONSENT_PERSIST_FAILED)
+                stopSelfResult(startId)
+                return START_NOT_STICKY
+            }
+            diagnostics.record(FloatingServiceDiagnosticEvent.USER_START_ACCEPTED)
         }
 
-        // Promote promptly for every start request before doing database or
+        if (restoringFromStickyRestart) {
+            diagnostics.record(FloatingServiceDiagnosticEvent.STICKY_RESTART_ACCEPTED)
+            diagnostics.recordRecovery(StickyRecoveryOutcome.REQUESTED)
+        }
+
+        // Promote promptly for every accepted start before database or
         // WindowManager work. The overlay permission is checked again below.
         if (!foregroundStarted) {
             try {
                 startForeground(NOTIFICATION_ID, buildNotification())
                 foregroundStarted = true
             } catch (_: SecurityException) {
+                diagnostics.record(FloatingServiceDiagnosticEvent.FOREGROUND_START_FAILED)
+                markStickyRecoveryFailed()
                 disableAndStop(startId)
                 return START_NOT_STICKY
             } catch (_: IllegalStateException) {
+                diagnostics.record(FloatingServiceDiagnosticEvent.FOREGROUND_START_FAILED)
+                markStickyRecoveryFailed()
                 disableAndStop(startId)
                 return START_NOT_STICKY
             }
         }
 
         if (!Settings.canDrawOverlays(this)) {
+            diagnostics.record(FloatingServiceDiagnosticEvent.OVERLAY_PERMISSION_MISSING)
+            markStickyRecoveryFailed()
             disableAndStop(startId)
             return START_NOT_STICKY
         }
@@ -167,6 +199,8 @@ class FloatingAssistantService : Service() {
                 conversationStore = ConversationStore(this)
                 loadActiveConversation()
             } catch (_: Exception) {
+                diagnostics.record(FloatingServiceDiagnosticEvent.ENCRYPTED_STORE_OPEN_FAILED)
+                markStickyRecoveryFailed()
                 Toast.makeText(
                     this,
                     "대화 저장소를 안전하게 열지 못해 플로팅을 시작하지 않았어요. 기존 데이터는 삭제하지 않았습니다.",
@@ -181,8 +215,15 @@ class FloatingAssistantService : Service() {
         return if (avatarView != null) START_STICKY else START_NOT_STICKY
     }
 
+    private fun markStickyRecoveryFailed() {
+        if (restoringFromStickyRestart) {
+            diagnostics.recordRecovery(StickyRecoveryOutcome.FAILED)
+            restoringFromStickyRestart = false
+        }
+    }
+
     private fun disableAndStop(startId: Int? = null) {
-        positionPrefs.edit().putBoolean(PREF_ENABLED_BY_USER, false).apply()
+        consentStore.setEnabled(false)
         if (startId != null) {
             stopSelfResult(startId)
         } else {
@@ -258,6 +299,8 @@ class FloatingAssistantService : Service() {
 
     private fun hasOverlayPermission(): Boolean {
         if (Settings.canDrawOverlays(this)) return true
+        diagnostics.record(FloatingServiceDiagnosticEvent.OVERLAY_PERMISSION_MISSING)
+        markStickyRecoveryFailed()
         disableAndStop()
         return false
     }
@@ -387,7 +430,14 @@ class FloatingAssistantService : Service() {
             manager.addView(avatar, params)
             characterRendererAttached = true
             renderer.onHostAttached()
+            diagnostics.record(FloatingServiceDiagnosticEvent.OVERLAY_ATTACHED)
+            if (restoringFromStickyRestart) {
+                diagnostics.recordRecovery(StickyRecoveryOutcome.RESTORED)
+                restoringFromStickyRestart = false
+            }
         } catch (_: Exception) {
+            diagnostics.record(FloatingServiceDiagnosticEvent.OVERLAY_ATTACH_FAILED)
+            markStickyRecoveryFailed()
             if (characterRendererAttached) {
                 try {
                     renderer.onHostDetached()

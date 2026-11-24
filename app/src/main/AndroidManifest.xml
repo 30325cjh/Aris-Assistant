@@ -28,6 +28,10 @@
             android:name=".ConversationMemoryActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".FloatingServiceDiagnosticsActivity"
+            android:exported="false" />
+
         <service
             android:name=".FloatingAssistantService"
             android:exported="false"

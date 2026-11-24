@@ -107,6 +107,9 @@ class MainActivity : Activity() {
         val conversationMemory = actionButton("대화 및 기억 관리") {
             startActivity(Intent(this, ConversationMemoryActivity::class.java))
         }
+        val diagnostics = actionButton("플로팅 서비스 진단") {
+            startActivity(Intent(this, FloatingServiceDiagnosticsActivity::class.java))
+        }
         val import = actionButton("기존 Unity 파일 선택 (실험용)") { chooseBundle() }
         val note = TextView(this).apply {
             text = "대화는 기기 내부에 저장하고 직접 관리할 수 있어요. 기억은 사용자가 직접 추가하며, Gemini 전송은 별도 설정을 켠 경우에만 이뤄집니다. Live2D 모델과 음성 기능은 아직 연결되지 않았습니다."
@@ -125,6 +128,7 @@ class MainActivity : Activity() {
         content.addView(stop, fullWidth())
         content.addView(geminiSettings, fullWidth())
         content.addView(conversationMemory, fullWidth())
+        content.addView(diagnostics, fullWidth())
         content.addView(import, fullWidth())
         content.addView(note, fullWidth())
 
