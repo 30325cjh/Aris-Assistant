@@ -13,6 +13,8 @@ Personal-use Android floating assistant prototype, implemented with Kotlin.
 - Chat stays hidden until the expanded character is double-tapped.
 - The persistent foreground-service notification includes a stop action and opens app settings when tapped.
 - Overlay permission is checked again when the app resumes, when a sticky service restart is received, and before overlay interactions. Revocation clears the user-enabled flag and removes the overlay. On Android 11+, the launcher is clamped to the safe area formed by system-bar and display-cutout insets; Android 8-10 use the legacy display-metrics fallback.
+- The in-app service diagnostics screen reports the current app-owned service state, overlay/notification permission state, the persisted user opt-in, and the latest allowlisted lifecycle/recovery result. It stores only fixed event codes and timestamps; it never records chat text, saved memories, API keys, or action payloads.
+- The service consent flag is committed synchronously before sticky restoration is enabled and before explicit stop completes, reducing the chance that process death races an asynchronous preference write.
 
 ## Current implementation: M0-M3 foundation
 
@@ -92,4 +94,5 @@ No emulator or physical-device test is claimed here. Verify on the target Samsun
 - Chat keyboard focus and close behavior.
 - Foreground notification stop action and clearing the persisted user-enabled flag.
 - Ordinary process-death restoration while permission remains granted, plus confirmation that force-stop is not bypassed.
+- The in-app service diagnostics screen agrees with Android's visible service state, and its last-event/recovery values contain no private content.
 - Rotation, process termination, and long-running overlay behavior.
