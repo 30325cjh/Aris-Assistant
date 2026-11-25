@@ -1,6 +1,8 @@
 package com.arisassistant
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FloatingServiceStartPolicyTest {
@@ -67,4 +69,55 @@ class FloatingServiceStartPolicyTest {
             )
         )
     }
+    @Test
+    fun foregroundPromotionHappensBeforeConsentPersistence() {
+        val events = mutableListOf<String>()
+
+        val persisted = promoteForegroundBeforeConsent(
+            promoteForeground = { events += "foreground" },
+            persistConsent = {
+                events += "consent"
+                true
+            }
+        )
+
+        assertTrue(persisted)
+        assertEquals(listOf("foreground", "consent"), events)
+    }
+
+    @Test
+    fun failedForegroundPromotionDoesNotPersistConsent() {
+        var consentWasPersisted = false
+
+        try {
+            promoteForegroundBeforeConsent(
+                promoteForeground = { throw IllegalStateException("foreground promotion failed") },
+                persistConsent = {
+                    consentWasPersisted = true
+                    true
+                }
+            )
+        } catch (_: IllegalStateException) {
+            // Expected: the caller handles the Android foreground-start failure.
+        }
+
+        assertFalse(consentWasPersisted)
+    }
+
+    @Test
+    fun consentPersistenceFailureIsReturnedOnlyAfterForegroundPromotion() {
+        val events = mutableListOf<String>()
+
+        val persisted = promoteForegroundBeforeConsent(
+            promoteForeground = { events += "foreground" },
+            persistConsent = {
+                events += "consent"
+                false
+            }
+        )
+
+        assertFalse(persisted)
+        assertEquals(listOf("foreground", "consent"), events)
+    }
+
 }
