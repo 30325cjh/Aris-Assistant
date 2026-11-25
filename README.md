@@ -14,7 +14,7 @@ Personal-use Android floating assistant prototype, implemented with Kotlin.
 - The persistent foreground-service notification includes a stop action and opens app settings when tapped.
 - Overlay permission is checked again when the app resumes, when a sticky service restart is received, and before overlay interactions. Revocation clears the user-enabled flag and removes the overlay. On Android 11+, the launcher is clamped to the safe area formed by system-bar and display-cutout insets; Android 8-10 use the legacy display-metrics fallback.
 - The in-app service diagnostics screen reports the current app-owned service state, overlay/notification permission state, the persisted user opt-in, and the latest allowlisted lifecycle/recovery result. It stores only fixed event codes and timestamps; it never records chat text, saved memories, API keys, or action payloads.
-- The service consent flag is committed synchronously before sticky restoration is enabled and before explicit stop completes, reducing the chance that process death races an asynchronous preference write.
+- Every accepted foreground-service start calls `startForeground()` before synchronous user-consent persistence or database/WindowManager work, so a slow or failed preference write cannot skip Android's foreground-start deadline. If consent persistence fails, the service stops without attaching the overlay. Explicit stop commits the opt-out before teardown.
 
 ## Current implementation: M0-M3 foundation
 
@@ -52,6 +52,7 @@ See [docs/M2_LIVE2D_RUNTIME_EVALUATION.md](docs/M2_LIVE2D_RUNTIME_EVALUATION.md)
 - The app requests INTERNET only for the user-initiated Gemini text request; cleartext traffic remains disabled.
 - The Gemini API key is entered by the user and encrypted at rest with Android Keystore AES-GCM. It is not bundled in the APK or repository. Rooted/instrumented devices can still expose a key while it is in use; restrict it with the provider's key controls.
 - The app does not request microphone permission or collect audio in this milestone.
+- Robolectric's runtime Android framework jars use the documented `robolectric.dependency.repo.url` override and the Google Cloud Storage Maven Central mirror; this is separate from Gradle's normal dependency repositories and avoids the direct Maven Central fetch path that intermittently returned HTTP 429/IO failures in CI.
 - Conversation titles, message text, and saved-memory content are AES-GCM encrypted before being written to the app-private SQLite database. The AES key is non-exportable and held by Android Keystore; per-row associated data binds each ciphertext to its table, column, and record ID. Row IDs, roles, timestamps, and message counts remain visible as database metadata. No cloud sync is implemented.
 - Database version 1 plaintext content is migrated to version 2 encryption inside SQLiteOpenHelper's upgrade transaction. A failed migration rolls back rather than dropping the user's history. SQLite secure-delete is enabled whenever the database is opened, including during migration, to reduce plaintext remnants in freed pages.
 - If the Android Keystore key is lost or invalidated, encrypted conversation content cannot be recovered; the app fails closed instead of silently generating a replacement key. The app disables Android backup, so encrypted database files are not intended to be restored independently of their Keystore key.
@@ -84,7 +85,7 @@ The first invocation requires network access to download the pinned Gradle 8.9 b
 
 ## Automated tests
 
-JVM unit tests cover the overlay tap/double-tap policy, display-bound and system-inset position clamping, explicit foreground-service start/stop and sticky-restart policy, character presentation mapping, provider directive allowlists, Gemini request-size/history bounds, conversation CRUD, and migration of a version 1 plaintext database to encrypted version 2 content. They also cover service-consent persistence and privacy-safe diagnostic event/recovery snapshots. The migration test verifies that titles, message text, and memories are not stored as readable plaintext and remain readable after reopening with the same test key. The Android Keystore implementation, live Gemini requests, and overlay interactions still require device-level validation.
+JVM unit tests cover the overlay tap/double-tap policy, display-bound and system-inset position clamping, explicit foreground-service start/stop and sticky-restart policy, character presentation mapping, provider directive allowlists, Gemini request-size/history bounds, conversation CRUD, and migration of a version 1 plaintext database to encrypted version 2 content. They also cover foreground-promotion-before-consent ordering, service-consent persistence, and privacy-safe diagnostic event/recovery snapshots. The migration test verifies that titles, message text, and memories are not stored as readable plaintext and remain readable after reopening with the same test key. The Android Keystore implementation, live Gemini requests, and overlay interactions still require device-level validation.
 
 ## Device validation still required
 
