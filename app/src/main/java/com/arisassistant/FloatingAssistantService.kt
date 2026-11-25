@@ -149,41 +149,52 @@ class FloatingAssistantService : Service() {
             return START_NOT_STICKY
         }
 
-        // Only an explicit in-app start records user consent. Commit the tiny
-        // preference synchronously before returning START_STICKY so an
-        // ordinary process death cannot race an asynchronous apply().
-        if (intent?.action == ACTION_START) {
+        val explicitStart = intent?.action == ACTION_START
+
+        // Android requires a foreground service started with
+        // startForegroundService() to call startForeground() promptly. Do
+        // that before the synchronous consent write: even a failed/slow disk
+        // write must not consume the foreground-promotion deadline.
+        val consentPersisted = try {
+            promoteForegroundBeforeConsent(
+                promoteForeground = {
+                    if (!foregroundStarted) {
+                        startForeground(NOTIFICATION_ID, buildNotification())
+                        foregroundStarted = true
+                    }
+                },
+                persistConsent = {
+                    // Sticky restoration already has a persisted opt-in. Only
+                    // a fresh, explicit user action may set it to true.
+                    !explicitStart || consentStore.setEnabled(true)
+                }
+            )
+        } catch (_: SecurityException) {
+            diagnostics.record(FloatingServiceDiagnosticEvent.FOREGROUND_START_FAILED)
+            markStickyRecoveryFailed()
+            disableAndStop(startId)
+            return START_NOT_STICKY
+        } catch (_: IllegalStateException) {
+            diagnostics.record(FloatingServiceDiagnosticEvent.FOREGROUND_START_FAILED)
+            markStickyRecoveryFailed()
+            disableAndStop(startId)
+            return START_NOT_STICKY
+        }
+
+        if (!consentPersisted) {
+            diagnostics.record(FloatingServiceDiagnosticEvent.CONSENT_PERSIST_FAILED)
+            disableAndStop(startId)
+            return START_NOT_STICKY
+        }
+
+        if (explicitStart) {
             diagnostics.record(FloatingServiceDiagnosticEvent.USER_START_REQUESTED)
-            if (!consentStore.setEnabled(true)) {
-                diagnostics.record(FloatingServiceDiagnosticEvent.CONSENT_PERSIST_FAILED)
-                stopSelfResult(startId)
-                return START_NOT_STICKY
-            }
             diagnostics.record(FloatingServiceDiagnosticEvent.USER_START_ACCEPTED)
         }
 
         if (restoringFromStickyRestart) {
             diagnostics.record(FloatingServiceDiagnosticEvent.STICKY_RESTART_ACCEPTED)
             diagnostics.recordRecovery(StickyRecoveryOutcome.REQUESTED)
-        }
-
-        // Promote promptly for every accepted start before database or
-        // WindowManager work. The overlay permission is checked again below.
-        if (!foregroundStarted) {
-            try {
-                startForeground(NOTIFICATION_ID, buildNotification())
-                foregroundStarted = true
-            } catch (_: SecurityException) {
-                diagnostics.record(FloatingServiceDiagnosticEvent.FOREGROUND_START_FAILED)
-                markStickyRecoveryFailed()
-                disableAndStop(startId)
-                return START_NOT_STICKY
-            } catch (_: IllegalStateException) {
-                diagnostics.record(FloatingServiceDiagnosticEvent.FOREGROUND_START_FAILED)
-                markStickyRecoveryFailed()
-                disableAndStop(startId)
-                return START_NOT_STICKY
-            }
         }
 
         if (!Settings.canDrawOverlays(this)) {
