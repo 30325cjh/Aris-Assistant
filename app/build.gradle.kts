@@ -31,5 +31,15 @@ android {
 
     testOptions {
         unitTests.isIncludeAndroidResources = true
+        unitTests.all {
+            // Robolectric downloads Android framework jars outside Gradle's
+            // normal dependency resolver. Use the GCS Maven Central mirror to
+            // avoid intermittent repo1.maven.org connection failures in CI.
+            it.systemProperty(
+                "robolectric.dependency.repo.url",
+                "https://maven-central.storage-download.googleapis.com/maven2/"
+            )
+            it.systemProperty("robolectric.dependency.repo.id", "google-maven-central")
+        }
     }
 }
