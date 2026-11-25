@@ -24,3 +24,16 @@ internal fun resolveFloatingServiceStartDecision(
     action == null && userEnabled -> FloatingServiceStartDecision.START
     else -> FloatingServiceStartDecision.STOP
 }
+
+/**
+ * Enforces Android's foreground-start deadline before any synchronous
+ * persistence that could delay startup. If promotion throws, consent is not
+ * written; if persistence fails, the caller must stop the service.
+ */
+internal fun promoteForegroundBeforeConsent(
+    promoteForeground: () -> Unit,
+    persistConsent: () -> Boolean
+): Boolean {
+    promoteForeground()
+    return persistConsent()
+}
