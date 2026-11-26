@@ -27,6 +27,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -136,7 +137,7 @@ class FloatingAssistantService : Service() {
             // no foreground-service start deadline is left pending.
             if (intent == null && !foregroundStarted) {
                 try {
-                    startForeground(NOTIFICATION_ID, buildNotification())
+                    promoteToForeground()
                     foregroundStarted = true
                 } catch (_: SecurityException) {
                     // The service is stopped below; no overlay is exposed.
@@ -159,7 +160,7 @@ class FloatingAssistantService : Service() {
             promoteForegroundBeforeConsent(
                 promoteForeground = {
                     if (!foregroundStarted) {
-                        startForeground(NOTIFICATION_ID, buildNotification())
+                        promoteToForeground()
                         foregroundStarted = true
                     }
                 },
@@ -250,6 +251,24 @@ class FloatingAssistantService : Service() {
             overlayPermissionListener
         )
         appOpsManager = manager
+    }
+
+    /**
+     * Promote with the declared service type on Android 14+, as required for
+     * targetSdk 34+. Older releases continue using the legacy overload.
+     */
+    private fun promoteToForeground() {
+        val notification = buildNotification()
+        if (shouldPassSpecialUseForegroundServiceType(Build.VERSION.SDK_INT)) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+        foregroundStarted = true
     }
 
     private fun createNotificationChannel() {

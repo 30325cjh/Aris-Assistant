@@ -49,6 +49,7 @@ See [docs/M2_LIVE2D_RUNTIME_EVALUATION.md](docs/M2_LIVE2D_RUNTIME_EVALUATION.md)
 - SYSTEM_ALERT_WINDOW is granted by the user in Android settings. It is never silently granted.
 - On Android 13+, the app explains and requests notification permission before starting the service. If denied, the user must explicitly confirm continuing; Android may show the service only in its system task manager rather than the notification drawer.
 - The foreground-service notification is intentionally visible and includes an explicit stop action.
+- On Android 14+ (API 34+), the service passes `FOREGROUND_SERVICE_TYPE_SPECIAL_USE` when promoting itself, matching the manifest's `specialUse` declaration and subtype property. This declaration does not bypass Android's foreground-service start restrictions.
 - The app requests INTERNET only for the user-initiated Gemini text request; cleartext traffic remains disabled.
 - The Gemini API key is entered by the user and encrypted at rest with Android Keystore AES-GCM. It is not bundled in the APK or repository. Rooted/instrumented devices can still expose a key while it is in use; restrict it with the provider's key controls.
 - The app does not request microphone permission or collect audio in this milestone.

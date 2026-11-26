@@ -120,4 +120,12 @@ class FloatingServiceStartPolicyTest {
         assertEquals(listOf("foreground", "consent"), events)
     }
 
+
+    @Test
+    fun specialUseForegroundTypeIsPassedOnAndroid14AndLaterOnly() {
+        assertFalse(shouldPassSpecialUseForegroundServiceType(26))
+        assertFalse(shouldPassSpecialUseForegroundServiceType(33))
+        assertTrue(shouldPassSpecialUseForegroundServiceType(34))
+        assertTrue(shouldPassSpecialUseForegroundServiceType(35))
+    }
 }
