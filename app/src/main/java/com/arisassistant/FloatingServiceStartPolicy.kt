@@ -37,3 +37,10 @@ internal fun promoteForegroundBeforeConsent(
     promoteForeground()
     return persistConsent()
 }
+
+/**
+ * Android 14 (API 34) requires the foreground-service type to be supplied
+ * when promoting a service. Aris declares specialUse in its manifest.
+ */
+internal fun shouldPassSpecialUseForegroundServiceType(apiLevel: Int): Boolean =
+    apiLevel >= 34
