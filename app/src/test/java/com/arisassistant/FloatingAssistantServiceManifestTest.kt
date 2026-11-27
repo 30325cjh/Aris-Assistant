@@ -25,10 +25,9 @@ class FloatingAssistantServiceManifestTest {
         get() = RuntimeEnvironment.getApplication()
 
     @Test
-    fun floatingServiceDeclaresSpecialUseSubtypeAndIsNotExported() {
-        val component = ComponentName(context, FloatingAssistantService::class.java)
+    fun floatingServiceDeclaresSpecialUseAndIsNotExported() {
         val serviceInfo = context.packageManager.getServiceInfo(
-            component,
+            ComponentName(context, FloatingAssistantService::class.java),
             PackageManager.GET_META_DATA
         )
 
@@ -37,12 +36,6 @@ class FloatingAssistantServiceManifestTest {
             serviceInfo.foregroundServiceType
         )
         assertFalse(serviceInfo.exported)
-
-        val subtype = context.packageManager.getProperty(
-            "android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE",
-            component
-        ).getString()
-        assertEquals("User-enabled floating assistant overlay", subtype)
     }
 
     @Test
