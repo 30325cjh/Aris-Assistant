@@ -128,4 +128,46 @@ class FloatingServiceStartPolicyTest {
         assertTrue(shouldPassSpecialUseForegroundServiceType(34))
         assertTrue(shouldPassSpecialUseForegroundServiceType(35))
     }
+
+    @Test
+    fun rejectedStickyRestartPromotesBeforeDiagnosticWrites() {
+        val events = mutableListOf<String>()
+
+        promoteBeforeRejectedStartDiagnostics(
+            shouldPromote = true,
+            promoteForeground = { events += "foreground" },
+            recordRejection = { events += "diagnostics" }
+        )
+
+        assertEquals(listOf("foreground", "diagnostics"), events)
+    }
+
+    @Test
+    fun rejectedStickyRestartStillRecordsRejectionWhenPromotionFails() {
+        val events = mutableListOf<String>()
+
+        promoteBeforeRejectedStartDiagnostics(
+            shouldPromote = true,
+            promoteForeground = {
+                events += "foreground"
+                throw IllegalStateException("promotion denied")
+            },
+            recordRejection = { events += "diagnostics" }
+        )
+
+        assertEquals(listOf("foreground", "diagnostics"), events)
+    }
+
+    @Test
+    fun rejectedNonStickyCommandDoesNotPromoteBeforeDiagnostics() {
+        val events = mutableListOf<String>()
+
+        promoteBeforeRejectedStartDiagnostics(
+            shouldPromote = false,
+            promoteForeground = { events += "foreground" },
+            recordRejection = { events += "diagnostics" }
+        )
+
+        assertEquals(listOf("diagnostics"), events)
+    }
 }
