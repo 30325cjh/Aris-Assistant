@@ -44,3 +44,28 @@ internal fun promoteForegroundBeforeConsent(
  */
 internal fun shouldPassSpecialUseForegroundServiceType(apiLevel: Int): Boolean =
     apiLevel >= 34
+
+/**
+ * A rejected null-intent sticky restart may still need to settle Android's
+ * foreground-start deadline. Promote before synchronous diagnostic commits;
+ * then record the rejection so the caller can clear consent and stop.
+ *
+ * Promotion failures are intentionally swallowed here because a rejected
+ * restart is never allowed to attach an overlay and the caller stops it next.
+ */
+internal fun promoteBeforeRejectedStartDiagnostics(
+    shouldPromote: Boolean,
+    promoteForeground: () -> Unit,
+    recordRejection: () -> Unit
+) {
+    if (shouldPromote) {
+        try {
+            promoteForeground()
+        } catch (_: SecurityException) {
+            // The caller immediately clears consent and stops the service.
+        } catch (_: IllegalStateException) {
+            // The caller immediately clears consent and stops the service.
+        }
+    }
+    recordRejection()
+}
