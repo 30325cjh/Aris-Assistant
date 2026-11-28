@@ -15,6 +15,7 @@ Personal-use Android floating assistant prototype, implemented with Kotlin.
 - Overlay permission is checked again when the app resumes, when a sticky service restart is received, and before overlay interactions. Revocation clears the user-enabled flag and removes the overlay. On Android 11+, the launcher is clamped to the safe area formed by system-bar and display-cutout insets; Android 8-10 use the legacy display-metrics fallback.
 - The in-app service diagnostics screen reports the current app-owned service state, overlay/notification permission state, the persisted user opt-in, and the latest allowlisted lifecycle/recovery result. It stores only fixed event codes and timestamps; it never records chat text, saved memories, API keys, or action payloads.
 - Every accepted foreground-service start calls `startForeground()` before synchronous user-consent persistence or database/WindowManager work, so a slow or failed preference write cannot skip Android's foreground-start deadline. If consent persistence fails, the service stops without attaching the overlay. Explicit stop commits the opt-out before teardown.
+- If Android delivers a null-intent sticky restart after the user has opted out, the service settles any pending foreground-start deadline before committing diagnostic rejection events, then clears consent and stops without attaching an overlay.
 
 ## Current implementation: M0-M3 foundation
 
