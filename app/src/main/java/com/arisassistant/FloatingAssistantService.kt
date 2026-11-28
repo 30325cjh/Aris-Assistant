@@ -119,37 +119,29 @@ class FloatingAssistantService : Service() {
         restoringFromStickyRestart = intent == null && decision == FloatingServiceStartDecision.START
 
         if (decision == FloatingServiceStartDecision.STOP) {
-            when {
-                intent == null -> {
-                    diagnostics.record(FloatingServiceDiagnosticEvent.STICKY_RESTART_REJECTED)
-                    diagnostics.recordRecovery(StickyRecoveryOutcome.REJECTED)
+            promoteBeforeRejectedStartDiagnostics(
+                shouldPromote = intent == null && !foregroundStarted,
+                promoteForeground = ::promoteToForeground,
+                recordRejection = {
+                    when {
+                        intent == null -> {
+                            diagnostics.record(FloatingServiceDiagnosticEvent.STICKY_RESTART_REJECTED)
+                            diagnostics.recordRecovery(StickyRecoveryOutcome.REJECTED)
+                        }
+                        intent.action == ACTION_STOP -> {
+                            diagnostics.record(FloatingServiceDiagnosticEvent.USER_STOP_REQUESTED)
+                        }
+                        else -> {
+                            diagnostics.record(FloatingServiceDiagnosticEvent.UNKNOWN_COMMAND_REJECTED)
+                        }
+                    }
                 }
-                intent.action == ACTION_STOP -> {
-                    diagnostics.record(FloatingServiceDiagnosticEvent.USER_STOP_REQUESTED)
-                }
-                else -> {
-                    diagnostics.record(FloatingServiceDiagnosticEvent.UNKNOWN_COMMAND_REJECTED)
-                }
-            }
+            )
 
-            // Android may recreate a sticky foreground service with a null
-            // intent. Promote that unapproved restart before stopping it, so
-            // no foreground-service start deadline is left pending.
-            if (intent == null && !foregroundStarted) {
-                try {
-                    promoteToForeground()
-                    foregroundStarted = true
-                } catch (_: SecurityException) {
-                    // The service is stopped below; no overlay is exposed.
-                } catch (_: IllegalStateException) {
-                    // The service is stopped below; no overlay is exposed.
-                }
-            }
             consentStore.setEnabled(false)
             stopSelfResult(startId)
             return START_NOT_STICKY
         }
-
         val explicitStart = intent?.action == ACTION_START
 
         // Android requires a foreground service started with
